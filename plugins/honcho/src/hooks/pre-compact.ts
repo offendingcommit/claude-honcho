@@ -156,12 +156,12 @@ export async function handlePreCompact(): Promise<void> {
         // Fresh dialectic - ask about user (worth the cost at compaction time)
         userPeer.chat(
           `Summarize the most important things to remember about ${config.peerName}. Focus on their preferences, working style, current projects, and any critical context that should survive a conversation summary.`,
-          { session }
+          { session, reasoningLevel: config.reasoningLevel ?? "low" }
         ),
         // Fresh dialectic - claude self-reflection
         aiPeer.chat(
           `What are the most important things ${config.aiPeer} was working on with ${config.peerName}? Summarize key context that should be preserved.`,
-          { session }
+          { session, reasoningLevel: config.reasoningLevel ?? "low" }
         ),
       ]);
 

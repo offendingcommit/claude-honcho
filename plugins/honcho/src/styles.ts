@@ -145,3 +145,25 @@ export function path(p: string): string {
 export function highlight(text: string): string {
   return `${colors.peach}${text}${colors.reset}`;
 }
+
+/**
+ * Build a Honcho app URL for a session
+ */
+export function honchoSessionUrl(workspace: string, sessionName: string): string {
+  return `https://app.honcho.dev/explore?workspace=${encodeURIComponent(workspace)}&view=sessions&session=${encodeURIComponent(sessionName)}`;
+}
+
+/**
+ * OSC 8 terminal hyperlink (clickable in supported terminals)
+ */
+export function hyperlink(url: string, text: string): string {
+  return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
+}
+
+/**
+ * Styled session line with clickable hyperlink to Honcho app
+ */
+export function sessionLine(workspace: string, sessionName: string): string {
+  const url = honchoSessionUrl(workspace, sessionName);
+  return `${colors.dim}Honcho session:${colors.reset} ${hyperlink(url, `${colors.skyBlue}${sessionName}${colors.reset}`)}`;
+}

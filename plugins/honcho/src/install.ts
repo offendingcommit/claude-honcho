@@ -41,8 +41,9 @@ export function checkHooksInstalled(): boolean {
  * Check if a command is available in PATH.
  */
 export function verifyCommandAvailable(command: string): boolean {
+  const cmd = process.platform === "win32" ? `where ${command}` : `which ${command}`;
   try {
-    execSync(`which ${command}`, { stdio: "pipe" });
+    execSync(cmd, { stdio: "pipe" });
     return true;
   } catch {
     return false;

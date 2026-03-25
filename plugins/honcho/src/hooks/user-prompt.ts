@@ -1,18 +1,20 @@
 import { Honcho } from "@honcho-ai/sdk";
-import { loadConfig, getSessionForPath, getSessionName, getHonchoClientOptions, isPluginEnabled, getCachedStdin, getLinkedWorkspaces, getHonchoBaseUrl } from "../config.js";
+import { loadConfig, getSessionName, getHonchoClientOptions, isPluginEnabled, getCachedStdin } from "../config.js";
 import {
   getCachedUserContext,
   getStaleCachedUserContext,
   isContextCacheStale,
   setCachedUserContext,
+  getMessageCount,
   incrementMessageCount,
   shouldRefreshKnowledgeGraph,
   markKnowledgeGraphRefreshed,
   getInstanceIdForCwd,
-  chunkContent,
+  queueMessage,
 } from "../cache.js";
 import { logHook, logApiCall, logCache, setLogContext } from "../log.js";
 import { visContextLine, visSkipMessage, addSystemMessage, verboseApiResult, verboseList } from "../visual.js";
+import { honchoSessionUrl } from "../styles.js";
 
 interface HookInput {
   prompt?: string;
@@ -21,59 +23,72 @@ interface HookInput {
   workspace_roots?: string[];
 }
 
-// Patterns to skip heavy context retrieval
+// Patterns to skip context injection
 const SKIP_CONTEXT_PATTERNS = [
   /^(yes|no|ok|sure|thanks|y|n|yep|nope|yeah|nah|continue|go ahead|do it|proceed)$/i,
   /^\//, // slash commands
 ];
 
+const FETCH_TIMEOUT_MS = 4000;
+
 /**
- * Extract meaningful topics from a prompt for semantic search
- * Instead of crude truncation (prompt.slice(0,500)), extract entities and terms
+ * Extract meaningful topics from a prompt for semantic search.
+ * Returns terms that are high-signal for conclusion matching.
  */
 function extractTopics(prompt: string): string[] {
   const topics: string[] = [];
 
-  // Extract file paths (high signal)
+  // File paths (high signal)
   const filePaths = prompt.match(/[\w\-\/\.]+\.(ts|tsx|js|jsx|py|rs|go|md|json|yaml|yml|toml|sql)/gi) || [];
   topics.push(...filePaths.slice(0, 5));
 
-  // Extract quoted strings (explicit references)
+  // Quoted strings (explicit references)
   const quoted = prompt.match(/"([^"]+)"/g)?.map(q => q.slice(1, -1)) || [];
   topics.push(...quoted.slice(0, 3));
 
-  // Extract technical terms (common frameworks/tools)
-  const techTerms = prompt.match(/\b(react|vue|svelte|angular|elysia|express|fastapi|django|flask|postgres|redis|docker|kubernetes|bun|node|deno|typescript|python|rust|go|graphql|rest|api|auth|oauth|jwt|stripe|webhook)\b/gi) || [];
+  // Technical terms
+  const techTerms = prompt.match(/\b(react|vue|svelte|angular|elysia|express|fastapi|django|flask|postgres|redis|docker|kubernetes|bun|node|deno|typescript|python|rust|go|graphql|rest|api|auth|oauth|jwt|stripe|webhook|honcho|mcp|claude|cursor|sentry)\b/gi) || [];
   topics.push(...[...new Set(techTerms.map(t => t.toLowerCase()))].slice(0, 5));
 
-  // Extract error patterns (debugging context)
+  // Error patterns
   const errors = prompt.match(/error[:\s]+[\w\s]+|failed[:\s]+[\w\s]+|exception[:\s]+[\w\s]+/gi) || [];
   topics.push(...errors.slice(0, 2));
 
-  // If we found meaningful topics, use them; otherwise fall back to first 200 chars
   if (topics.length > 0) {
     return [...new Set(topics)];
   }
 
-  // Fallback: extract meaningful words (>3 chars, not common words)
-  const commonWords = new Set(['the', 'and', 'for', 'that', 'this', 'with', 'from', 'have', 'are', 'was', 'were', 'been', 'being', 'has', 'had', 'does', 'did', 'will', 'would', 'could', 'should', 'can', 'may', 'might', 'must', 'shall', 'need', 'want', 'like', 'just', 'also', 'more', 'some', 'what', 'when', 'where', 'which', 'who', 'how', 'why', 'all', 'each', 'every', 'both', 'few', 'most', 'other', 'into', 'over', 'such', 'only', 'same', 'than', 'very', 'your', 'make', 'take', 'come', 'give', 'look', 'think', 'know', 'see', 'time', 'year', 'people', 'way', 'day', 'man', 'woman', 'child', 'world', 'life', 'hand', 'part', 'place', 'case', 'week', 'company', 'system', 'program', 'question', 'work', 'government', 'number', 'night', 'point', 'home', 'water', 'room', 'mother', 'area', 'money', 'story', 'fact', 'month', 'lot', 'right', 'study', 'book', 'eye', 'job', 'word', 'business', 'issue', 'side', 'kind', 'head', 'house', 'service', 'friend', 'father', 'power', 'hour', 'game', 'line', 'end', 'member', 'law', 'car', 'city', 'community', 'name']);
+  // Fallback: meaningful words >3 chars minus stopwords
+  const stopwords = new Set(['the', 'and', 'for', 'that', 'this', 'with', 'from', 'have', 'are', 'was', 'were', 'been', 'being', 'has', 'had', 'does', 'did', 'will', 'would', 'could', 'should', 'can', 'may', 'might', 'must', 'shall', 'need', 'want', 'like', 'just', 'also', 'more', 'some', 'what', 'when', 'where', 'which', 'who', 'how', 'why', 'all', 'each', 'every', 'both', 'few', 'most', 'other', 'into', 'over', 'such', 'only', 'same', 'than', 'very', 'your', 'make', 'take', 'come', 'give', 'look', 'think', 'know']);
   const words = prompt.toLowerCase().match(/\b[a-z]{4,}\b/g) || [];
-  const meaningfulWords = words.filter(w => !commonWords.has(w));
-  return [...new Set(meaningfulWords)].slice(0, 10);
+  return [...new Set(words.filter(w => !stopwords.has(w)))].slice(0, 10);
 }
 
 function shouldSkipContextRetrieval(prompt: string): boolean {
   return SKIP_CONTEXT_PATTERNS.some((p) => p.test(prompt.trim()));
 }
 
+function formatSessionLink(sessionUrl: string): string {
+  return `view your session in honcho GUI: ${sessionUrl}`;
+}
 
+/**
+ * UserPromptSubmit hook — serves cached context instantly, refreshes when stale.
+ *
+ * Context lifecycle:
+ *   SessionStart  -> warms cache (parallel API calls, 30s budget)
+ *   UserPrompt    -> serves cache; refreshes (with 4s timeout) when TTL expires or message threshold hit
+ *   PreCompact    -> re-warms cache before context window reset
+ *
+ * On refresh failure, silently falls back to stale cache.
+ * On no cache at all, exits silently — context will arrive next turn.
+ */
 export async function handleUserPrompt(): Promise<void> {
   const config = loadConfig();
   if (!config) {
     process.exit(0);
   }
 
-  // Early exit if plugin is disabled
   if (!isPluginEnabled()) {
     process.exit(0);
   }
@@ -91,146 +106,155 @@ export async function handleUserPrompt(): Promise<void> {
   const prompt = hookInput.prompt || "";
   const cwd = hookInput.workspace_roots?.[0] || hookInput.cwd || process.cwd();
   const instanceId = hookInput.session_id || getInstanceIdForCwd(cwd);
+  const sessionName = getSessionName(cwd, instanceId || undefined);
 
-  // Set log context for this hook
-  setLogContext(cwd, getSessionName(cwd, instanceId || undefined));
+  setLogContext(cwd, sessionName);
 
-  // Skip empty prompts
   if (!prompt.trim()) {
     process.exit(0);
   }
 
   logHook("user-prompt", `Prompt received (${prompt.length} chars)`);
 
-  // Start upload immediately (we'll await before exit)
-  let uploadPromise: Promise<void> | null = null;
+  // Queue user prompt for upload at session-end (instant, no network)
   if (config.saveMessages !== false) {
-    uploadPromise = uploadMessageAsync(config, cwd, prompt, instanceId || undefined);
+    queueMessage(prompt, config.peerName, cwd, instanceId || undefined);
   }
 
-  // Track message count for threshold-based knowledge graph refresh
-  const messageCount = incrementMessageCount();
+  // Track message count for threshold-based refresh
+  const messageCountBefore = getMessageCount();
+  incrementMessageCount();
+  const shouldShowSessionLink = messageCountBefore === 0;
 
-  // For trivial prompts, skip heavy context retrieval but still upload
+  // Build session link lazily — only materialized on first message
+  const sessionLink = shouldShowSessionLink
+    ? formatSessionLink(honchoSessionUrl(config.workspace, sessionName))
+    : undefined;
+
+  // Skip trivial prompts — no context needed for "y", "ok", etc.
   if (shouldSkipContextRetrieval(prompt)) {
     logHook("user-prompt", "Skipping context (trivial prompt)");
-    visSkipMessage("user-prompt", "trivial prompt");
-    if (uploadPromise) await uploadPromise.catch((e) => logHook("user-prompt", `Upload failed: ${e}`, { error: String(e) }));
+    visSkipMessage("user-prompt", sessionLink ? `${sessionLink} · trivial prompt` : "trivial prompt");
     process.exit(0);
   }
 
-  // Determine if we should refresh: either cache is stale OR message threshold reached
+  // Decide whether to refresh: TTL expired or message threshold hit
   const forceRefresh = shouldRefreshKnowledgeGraph();
   const cachedContext = getCachedUserContext();
   const cacheIsStale = isContextCacheStale();
 
   if (cachedContext && !cacheIsStale && !forceRefresh) {
-    // Use cached context - instant response
-    logCache("hit", "userContext", "using cached");
+    // Fresh cache — serve instantly, no API call
+    logCache("hit", "userContext", "fresh cache");
+    verboseApiResult("peer.context() -> representation (cached)", cachedContext?.representation);
+    verboseList("peer.context() -> peerCard (cached)", cachedContext?.peerCard);
 
-    // Verbose output (file-based — ~/.honcho/verbose.log)
-    // UserPromptSubmit stdout is always visible to Claude, so we use
-    // the log file for debug data. View with: tail -f ~/.honcho/verbose.log
-    const cachedRep = cachedContext?.representation;
-    verboseApiResult("session.context() → representation (cached)", cachedRep);
-    verboseList("session.context() → peerCard (cached)", cachedContext?.peerCard);
-
-    const contextParts = formatCachedContext(cachedContext, config.peerName);
-    if (contextParts.length > 0) {
-      const rep = cachedContext?.representation;
-      const conclusionCount = typeof rep === "string" ? rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#")).length : 0;
-      const visMsg = visContextLine("user-prompt", {
-        conclusions: conclusionCount,
-        insights: 0,
-        cached: true,
-      }) || "[honcho] user-prompt \u2190 context injected (cached)";
-      outputContext(config.peerName, contextParts, visMsg);
-    } else {
-      outputSystemOnly("[honcho] user-prompt \u2022 no cached context available");
-    }
-    if (uploadPromise) await uploadPromise.catch((e) => logHook("user-prompt", `Upload failed: ${e}`, { error: String(e) }));
+    serveContext(config.peerName, cachedContext, true, sessionLink);
     process.exit(0);
   }
 
-  // Fetch fresh context when:
-  // 1. Cache is stale (TTL expired), OR
-  // 2. Message threshold reached (every N messages)
-  // Race against a 5s timeout -- serve stale cache on timeout instead of failing.
+  // Cache is stale or threshold reached — try a fresh fetch with timeout
   logCache("miss", "userContext", forceRefresh ? "threshold refresh" : "stale cache");
 
-  const FETCH_TIMEOUT_MS = 5000;
   const fetchResult = await Promise.race([
-    fetchFreshContext(config, cwd, prompt).then(r => ({ ok: true as const, ...r })),
+    fetchFreshContext(config, prompt).then(r => ({ ok: true as const, ...r })),
     new Promise<{ ok: false }>(resolve => setTimeout(() => resolve({ ok: false }), FETCH_TIMEOUT_MS)),
-  ]).catch((e): { ok: false } => {
-    logHook("user-prompt", `Context fetch failed: ${e}`, { error: String(e) });
-    return { ok: false };
-  });
+  ]).catch((): { ok: false } => ({ ok: false }));
 
   if (fetchResult.ok) {
-    const { parts: contextParts, conclusionCount } = fetchResult;
-    if (contextParts.length > 0) {
-      const visMsg = visContextLine("user-prompt", {
-        conclusions: conclusionCount,
-        insights: 0,
-        cached: false,
-      }) || "[honcho] user-prompt \u2190 fresh context injected";
-      outputContext(config.peerName, contextParts, visMsg);
-    } else {
-      outputSystemOnly("[honcho] user-prompt \u2022 no matching context found");
-    }
+    const { context } = fetchResult;
     if (forceRefresh) {
       markKnowledgeGraphRefreshed();
     }
-  } else {
-    // Timeout or error -- serve stale cache instead of showing nothing
-    const staleContext = getStaleCachedUserContext();
-    if (staleContext) {
-      logHook("user-prompt", "Serving stale cache after timeout/error");
-      const contextParts = formatCachedContext(staleContext, config.peerName);
-      if (contextParts.length > 0) {
-        const visMsg = "[honcho] user-prompt \u2190 context injected (stale)";
-        outputContext(config.peerName, contextParts, visMsg);
-      }
-    } else {
-      outputSystemOnly("[honcho] user-prompt \u2717 context unavailable");
+    if (context) {
+      serveContext(config.peerName, context, false, sessionLink);
+      process.exit(0);
     }
   }
 
-  // Ensure upload completes before exit
-  if (uploadPromise) await uploadPromise.catch((e) => logHook("user-prompt", `Upload failed: ${e}`, { error: String(e) }));
+  // Fetch failed or timed out — silently fall back to stale cache
+  const staleContext = getStaleCachedUserContext();
+  if (staleContext) {
+    logHook("user-prompt", "Serving stale cache after timeout");
+    serveContext(config.peerName, staleContext, true, sessionLink);
+  }
+  // No cache at all — exit silently, context will arrive after session-start completes
+
   process.exit(0);
 }
 
-async function uploadMessageAsync(config: any, cwd: string, prompt: string, instanceId?: string): Promise<void> {
-  logApiCall("session.addMessages", "POST", `user prompt (${prompt.length} chars)`);
-  const honcho = new Honcho(getHonchoClientOptions(config));
-  const sessionName = getSessionName(cwd, instanceId);
+/**
+ * Format and output context injection to Claude.
+ */
+function serveContext(
+  peerName: string,
+  context: any,
+  cached: boolean,
+  sessionLink?: string,
+): void {
+  const { parts: contextParts } = formatCachedContext(context, peerName);
+  if (contextParts.length === 0) return;
 
-  // Get session and peer using new fluent API
-  const session = await honcho.session(sessionName);
-  const userPeer = await honcho.peer(config.peerName);
-
-  // Chunk large messages to stay under API size limits
-  const chunks = chunkContent(prompt);
-  const messages = chunks.map(chunk =>
-    userPeer.message(chunk, {
-      metadata: {
-        instance_id: instanceId || undefined,
-        session_affinity: sessionName,
-      }
-    })
-  );
-  await session.addMessages(messages);
+  const visMsg = visContextLine("user-prompt", { cached });
+  outputContext(peerName, contextParts, sessionLink ? `${sessionLink}\n${visMsg}` : visMsg);
 }
 
-function formatCachedContext(context: any, peerName: string): string[] {
+async function fetchFreshContext(config: any, prompt: string): Promise<{ context: any }> {
+  const honcho = new Honcho(getHonchoClientOptions(config));
+  const userPeer = await honcho.peer(config.peerName);
+
+  const startTime = Date.now();
+
+  // Try search-based context first — returns conclusions relevant to the prompt
+  const topics = extractTopics(prompt);
+  const searchQuery = topics.length > 0 ? topics.join(" ") : undefined;
+
+  let contextResult: any = null;
+
+  if (searchQuery) {
+    try {
+      contextResult = await userPeer.context({
+        searchQuery,
+        searchTopK: 5,
+        searchMaxDistance: 0.7,
+        maxConclusions: 15,
+        includeMostFrequent: true,
+      });
+      logApiCall("peer.context", "GET", `search: ${searchQuery.slice(0, 60)}`, Date.now() - startTime, true);
+    } catch (e) {
+      // Search failed — fall through to static context
+      logHook("user-prompt", `Search context failed, falling back to static: ${e}`);
+    }
+  }
+
+  // Fallback: static context (no search query)
+  if (!contextResult) {
+    contextResult = await userPeer.context({
+      maxConclusions: 15,
+      includeMostFrequent: true,
+    });
+    logApiCall("peer.context", "GET", `static context`, Date.now() - startTime, true);
+  }
+
+  if (contextResult) {
+    setCachedUserContext(contextResult);
+    verboseApiResult("peer.context() -> representation (fresh)", (contextResult as any).representation);
+    verboseList("peer.context() -> peerCard (fresh)", (contextResult as any).peerCard);
+  }
+
+  return { context: contextResult };
+}
+
+function formatCachedContext(context: any, peerName: string): { parts: string[]; conclusionCount: number } {
   const parts: string[] = [];
+  let conclusionCount = 0;
   const rep = context?.representation;
 
   if (typeof rep === "string" && rep.trim()) {
     const lines = rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#"));
-    const summary = lines.slice(0, 5).map((l: string) => l.replace(/^\[.*?\]\s*/, "").replace(/^- /, "")).join("; ");
+    const selected = lines.slice(0, 5);
+    conclusionCount = selected.length;
+    const summary = selected.map((l: string) => l.replace(/^\[.*?\]\s*/, "").replace(/^- /, "")).join("; ");
     if (summary) parts.push(`Relevant conclusions: ${summary}`);
   }
 
@@ -239,104 +263,7 @@ function formatCachedContext(context: any, peerName: string): string[] {
     parts.push(`Profile: ${peerCard.join("; ")}`);
   }
 
-  return parts;
-}
-
-interface FreshContextResult {
-  parts: string[];
-  conclusionCount: number;
-}
-
-async function fetchFreshContext(config: any, cwd: string, prompt: string): Promise<FreshContextResult> {
-  const honcho = new Honcho(getHonchoClientOptions(config));
-  const sessionName = getSessionName(cwd);
-
-  // Get peer using new fluent API
-  const session = await honcho.session(sessionName);
-
-  const contextParts: string[] = [];
-  let conclusionCount = 0;
-
-  // Only use context() here - it's free and returns pre-computed knowledge
-  // Skip chat() - only use at session-start
-  const startTime = Date.now();
-
-  // Extract meaningful topics instead of crude truncation
-  const topics = extractTopics(prompt);
-  const searchQuery = topics.length > 0 ? topics.join(' ') : prompt.slice(0, 200);
-
-  const contextResult = await session.context({
-    searchQuery,
-    representationOptions: {
-      searchTopK: 5,
-      searchMaxDistance: 0.7,
-      maxConclusions: 10,
-    },
-  });
-
-  logApiCall("session.context", "GET", `search query`, Date.now() - startTime, true);
-
-  if (contextResult) {
-    setCachedUserContext(contextResult); // Update cache
-    const rep = (contextResult as any).representation;
-
-    // Verbose output (file-based — ~/.honcho/verbose.log)
-    // UserPromptSubmit stdout is always visible, so debug data goes to file.
-    verboseApiResult("session.context() → representation", rep);
-    verboseList("session.context() → peerCard", (contextResult as any).peerCard);
-
-    if (typeof rep === "string" && rep.trim()) {
-      const lines = rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#"));
-      conclusionCount = lines.length;
-      const summary = lines.slice(0, 5).map((l: string) => l.replace(/^\[.*?\]\s*/, "").replace(/^- /, "")).join("; ");
-      if (summary) contextParts.push(`Relevant conclusions: ${summary}`);
-      logCache("write", "userContext", `${conclusionCount} conclusions`);
-    }
-
-    const peerCard = (contextResult as any).peerCard;
-    if (peerCard?.length) {
-      contextParts.push(`Profile: ${peerCard.join("; ")}`);
-    }
-  }
-
-  // Fetch from linked workspaces (lightweight — just conclusions, no dialectic)
-  const linkedWorkspaces = getLinkedWorkspaces();
-  if (linkedWorkspaces.length > 0) {
-    const linkedResults = await Promise.allSettled(
-      linkedWorkspaces.map(async (ws) => {
-        const linkedClient = new Honcho({
-          apiKey: config.apiKey,
-          baseURL: getHonchoBaseUrl(config),
-          workspaceId: ws,
-        });
-        const linkedSession = await linkedClient.session(sessionName);
-        return {
-          ws,
-          context: await linkedSession.context({
-            searchQuery,
-            representationOptions: { searchTopK: 3, searchMaxDistance: 0.7, maxConclusions: 5 },
-          }),
-        };
-      })
-    );
-
-    for (const result of linkedResults) {
-      if (result.status === "fulfilled" && result.value.context) {
-        const rep = (result.value.context as any).representation;
-        if (typeof rep === "string" && rep.trim()) {
-          const lines = rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#"));
-          const summary = lines.slice(0, 3).map((l: string) => l.replace(/^\[.*?\]\s*/, "").replace(/^- /, "")).join("; ");
-          if (summary) contextParts.push(`Linked (${result.value.ws}): ${summary}`);
-        }
-      }
-    }
-  }
-
-  return { parts: contextParts, conclusionCount };
-}
-
-function outputSystemOnly(message: string): void {
-  console.log(JSON.stringify({ systemMessage: message }));
+  return { parts, conclusionCount };
 }
 
 function outputContext(peerName: string, contextParts: string[], systemMsg?: string): void {

@@ -1,10 +1,9 @@
 import { Honcho } from "@honcho-ai/sdk";
-import { loadConfig, getSessionForPath, setSessionForPath, getSessionName, getHonchoClientOptions, isPluginEnabled, getCachedStdin, getLinkedWorkspaces, getHonchoBaseUrl } from "../config.js";
+import { loadConfig, getSessionForPath, setSessionForPath, getSessionName, getHonchoClientOptions, isPluginEnabled, getCachedStdin } from "../config.js";
 import {
   setCachedUserContext,
   setCachedClaudeContext,
   setCachedSessionId,
-  loadClaudeLocalContext,
   resetMessageCount,
   setClaudeInstanceId,
   getCachedGitState,
@@ -12,7 +11,6 @@ import {
   detectGitChanges,
 } from "../cache.js";
 import { Spinner } from "../spinner.js";
-import { displayHonchoStartup } from "../pixel.js";
 import { captureGitState, getRecentCommits, isGitRepo, inferFeatureContext } from "../git.js";
 import { logHook, logApiCall, logCache, logFlow, logAsync, setLogContext } from "../log.js";
 import { verboseApiResult, verboseList, clearVerboseLog } from "../visual.js";
@@ -24,13 +22,6 @@ interface HookInput {
   cwd?: string;
   source?: string;
   workspace_roots?: string[];
-}
-
-function formatRepresentation(rep: any): string {
-  if (typeof rep === "string" && rep.trim()) {
-    return rep;
-  }
-  return "";
 }
 
 export async function handleSessionStart(): Promise<void> {
@@ -88,16 +79,9 @@ export async function handleSessionStart(): Promise<void> {
     setCachedGitState(cwd, currentGitState);
   }
 
-  // Show workspace info immediately (before any API calls)
-  console.log(displayHonchoStartup(
-    "Honcho Memory",
-    `${config.workspace} · ${sessionName}`,
-    currentGitState?.branch ? `branch: ${currentGitState.branch}` : undefined,
-  ));
-
-  // Start loading animation with neural style
+  // Start loading animation with session name visible in the spinner message
   const spinner = new Spinner({ style: "neural" });
-  spinner.start("loading memory");
+  spinner.start(`${sessionName} · loading memory`);
 
   try {
     logHook("session-start", `Starting session in ${cwd}`, { branch: currentGitState?.branch });
@@ -107,8 +91,7 @@ export async function handleSessionStart(): Promise<void> {
     const honcho = new Honcho(getHonchoClientOptions(config));
 
     // Step 1-3: Get session and peers using new fluent API (lazily created)
-    spinner.update("Loading session");
-    const sessionName = getSessionName(cwd, claudeInstanceId);
+    spinner.update(`${sessionName} · loading session`);
 
     const startTime = Date.now();
     // New SDK: session() and peer() are async and create lazily
@@ -123,12 +106,11 @@ export async function handleSessionStart(): Promise<void> {
     // Also stores instanceId per-cwd to prevent cross-session collision
     setCachedSessionId(cwd, sessionName, session.id, claudeInstanceId);
 
-    // Step 4: Set session peer configuration (fire-and-forget)
-    // New SDK uses session.setPeerConfiguration()
-    Promise.all([
-      session.setPeerConfiguration(userPeer, { observeMe: true, observeOthers: false }),
-      session.setPeerConfiguration(aiPeer, { observeMe: false, observeOthers: true }),
-    ]).catch((e) => logHook("session-start", `Set peers failed: ${e}`));
+    // Step 4: Add peers with observation config (materializes session server-side)
+    await session.addPeers([
+      [userPeer, { observeMe: true, observeOthers: false }],
+      [aiPeer, { observeMe: true, observeOthers: true }],
+    ]);
 
     // Only persist session names for per-directory strategy (stable names).
     // Dynamic strategies (git-branch, chat-instance) change per session,
@@ -161,119 +143,54 @@ export async function handleSessionStart(): Promise<void> {
       }
     }
 
-    // Step 5: PARALLEL fetch all context (the big optimization!)
-    spinner.update("Fetching memory context");
-    logAsync("context-fetch", "Starting 5 parallel context fetches");
-    const contextParts: string[] = [];
+    // Step 5: Warm caches + trigger dialectic reasoning.
+    // context() results are cached for user-prompt hook (sole injection point).
+    // chat() triggers Honcho's dialectic engine — the results aren't displayed
+    // but the reasoning feeds back into the knowledge graph.
+    spinner.update(`${sessionName} · fetching context`);
 
-    // Header with git context
-    let headerContent = `## Honcho Memory System Active
-- User: ${config.peerName}
-- AI: ${config.aiPeer}
-- Workspace: ${config.workspace}
-- Session: ${sessionName}
-- Directory: ${cwd}`;
-
-    if (currentGitState) {
-      headerContent += `\n- Git Branch: ${currentGitState.branch}`;
-      headerContent += `\n- Git HEAD: ${currentGitState.commit}`;
-      if (currentGitState.isDirty) {
-        headerContent += `\n- Working Tree: ${currentGitState.dirtyFiles.length} uncommitted changes`;
-      }
-    }
-
-    // Add inferred feature context to header
-    if (featureContext && featureContext.confidence !== "low") {
-      headerContent += `\n- Feature: ${featureContext.type} - ${featureContext.description}`;
-      if (featureContext.areas.length > 0) {
-        headerContent += `\n- Areas: ${featureContext.areas.join(", ")}`;
-      }
-    }
-
-    contextParts.push(headerContent);
-
-    // Add inferred feature context section
-    if (featureContext) {
-      const featureSection = [
-        `## Inferred Feature Context`,
-        `- Type: ${featureContext.type}`,
-        `- Description: ${featureContext.description}`,
-      ];
-      if (featureContext.keywords.length > 0) {
-        featureSection.push(`- Keywords: ${featureContext.keywords.join(", ")}`);
-      }
-      if (featureContext.areas.length > 0) {
-        featureSection.push(`- Code Areas: ${featureContext.areas.join(", ")}`);
-      }
-      featureSection.push(`- Confidence: ${featureContext.confidence}`);
-      contextParts.push(featureSection.join("\n"));
-    }
-
-    // Add git changes section if external changes detected
-    if (gitChanges.length > 0) {
-      const changeDescriptions = gitChanges.map((c) => `- ${c.description}`).join("\n");
-      contextParts.push(`## Git Activity Since Last Session\n${changeDescriptions}`);
-    }
-
-    // Load local claude context immediately (instant, no API call)
-    const localClaudeContext = loadClaudeLocalContext();
-    if (localClaudeContext) {
-      contextParts.push(`## Local Context (What I Was Working On)\n${localClaudeContext.slice(0, 2000)}`);
-    }
-
-    // Build context-aware dialectic queries
-    const branchContext = currentGitState ? ` They are currently on git branch '${currentGitState.branch}'.` : "";
-    const changeContext = gitChanges.length > 0 && gitChanges[0].type === "branch_switch"
-      ? ` Note: they just switched branches from '${gitChanges[0].from}' to '${gitChanges[0].to}'.`
-      : "";
+    const branchContext = currentGitState ? ` on branch '${currentGitState.branch}'` : "";
     const featureHint = featureContext && featureContext.confidence !== "low"
-      ? ` Current work appears to be: ${featureContext.type} - ${featureContext.description}.`
+      ? ` Working on: ${featureContext.type} - ${featureContext.description}.`
       : "";
 
-    // Parallel API calls for rich context
+    logAsync("context-fetch", "Starting 2 parallel context fetches + 2 dialectic fire-and-forget");
+
     const fetchStart = Date.now();
-    const [userContextResult, claudeContextResult, summariesResult, userChatResult, claudeChatResult] =
+    const [userContextResult, claudeContextResult] =
       await Promise.allSettled([
-        // 1. Get user's context (SESSION-SCOPED for relevance)
         userPeer.context({
           maxConclusions: 25,
           includeMostFrequent: true,
         }),
-        // 2. Get claude's context (self-awareness, also session-scoped)
         aiPeer.context({
           maxConclusions: 15,
           includeMostFrequent: true,
         }),
-        // 3. Get session summaries
-        session.summaries(),
-        // 4. Dialectic: Ask about user (context-enhanced)
-        userPeer.chat(
-          `Summarize what you know about ${config.peerName} in 2-3 sentences. Focus on their preferences, current projects, and working style.${branchContext}${changeContext}${featureHint}`,
-          { session }
-        ),
-        // 5. Dialectic: Ask about claude (self-reflection, context-enhanced)
-        aiPeer.chat(
-          `What has ${config.aiPeer} been working on recently?${branchContext}${featureHint} Summarize the AI assistant's recent activities and focus areas relevant to the current work context.`,
-          { session }
-        ),
       ]);
 
-    // Log async results
+    // Dialectic: fire-and-forget. Results feed the knowledge graph;
+    // we don't need them for cache or display.
+    const dialecticLevel = config.reasoningLevel ?? "low";
+    userPeer.chat(
+      `Summarize what you know about ${config.peerName}. Focus on preferences, current projects, and working style.${branchContext}${featureHint}`,
+      { session, reasoningLevel: dialecticLevel }
+    ).catch((e) => logHook("session-start", `Dialectic (user) failed: ${e}`));
+
+    aiPeer.chat(
+      `What has ${config.aiPeer} been working on recently?${branchContext}${featureHint} Summarize recent activities relevant to the current work.`,
+      { session, reasoningLevel: dialecticLevel }
+    ).catch((e) => logHook("session-start", `Dialectic (ai) failed: ${e}`));
+
     const fetchDuration = Date.now() - fetchStart;
     const asyncResults = [
       { name: "peer.context(user)", success: userContextResult.status === "fulfilled" },
       { name: "peer.context(claude)", success: claudeContextResult.status === "fulfilled" },
-      { name: "session.summaries", success: summariesResult.status === "fulfilled" },
-      { name: "peer.chat(user)", success: userChatResult.status === "fulfilled" },
-      { name: "peer.chat(claude)", success: claudeChatResult.status === "fulfilled" },
     ];
     const successCount = asyncResults.filter(r => r.success).length;
-    logAsync("context-fetch", `Completed: ${successCount}/5 succeeded in ${fetchDuration}ms`, asyncResults);
+    logAsync("context-fetch", `Context: ${successCount}/2 succeeded in ${fetchDuration}ms (dialectic fire-and-forget)`, asyncResults);
 
-    // ========== VERBOSE OUTPUT (file-based) ==========
-    // Written to ~/.honcho/verbose.log — NOT shown in Ctrl+O.
-    // SessionStart stdout is always visible to Claude, so we can't
-    // use stdout for debug data. View with: tail -f ~/.honcho/verbose.log
+    // Verbose output (file-based — ~/.honcho/verbose.log)
     if (userContextResult.status === "fulfilled" && userContextResult.value) {
       const ctx = userContextResult.value as any;
       verboseApiResult("peer.context(user) → representation", ctx.representation);
@@ -283,146 +200,32 @@ export async function handleSessionStart(): Promise<void> {
       const ctx = claudeContextResult.value as any;
       verboseApiResult("peer.context(claude) → representation", ctx.representation);
     }
-    if (summariesResult.status === "fulfilled" && summariesResult.value) {
-      const s = summariesResult.value as any;
-      const short = s.shortSummary;
-      verboseApiResult("session.summaries() → shortSummary", short?.content);
-    }
-    if (userChatResult.status === "fulfilled") {
-      const chatVal = typeof userChatResult.value === "string" ? userChatResult.value : (userChatResult.value as any)?.content;
-      verboseApiResult(`peer.chat(user) → "${config.peerName}"`, chatVal);
-    }
-    if (claudeChatResult.status === "fulfilled") {
-      const chatVal = typeof claudeChatResult.value === "string" ? claudeChatResult.value : (claudeChatResult.value as any)?.content;
-      verboseApiResult(`peer.chat(claude) → "${config.aiPeer}"`, chatVal);
-    }
 
-    // ========== CONSOLIDATED CONTEXT OUTPUT ==========
-    // Reduced from 6+ overlapping sections to 2-3 focused sections
-    // (as recommended in FEEDBACK-FROM-CLAUDE.md)
-
-    // Section 1: User Profile + Conclusions (CONSOLIDATED)
-    // Combines: peerCard and representation
-    // Skips redundant "AI Summary" dialectic if we have good conclusions
+    // Cache results for user-prompt hook
     if (userContextResult.status === "fulfilled" && userContextResult.value) {
       const context = userContextResult.value as any;
-      setCachedUserContext(context); // Cache for user-prompt hook
+      setCachedUserContext(context);
       const rep = context.representation;
-      const repConclusionCount = typeof rep === "string" ? rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#")).length : 0;
-      logCache("write", "userContext", `${repConclusionCount} conclusions`);
-
-      const userSection: string[] = [];
-
-      const peerCard = context.peerCard;
-      if (peerCard && peerCard.length > 0) {
-        userSection.push(peerCard.join("\n"));
-      }
-
-      // Add conclusions (session-scoped, so should be relevant)
-      if (rep) {
-        const repText = formatRepresentation(rep);
-        if (repText) {
-          userSection.push(repText);
-        }
-      }
-
-      if (userSection.length > 0) {
-        contextParts.push(`## ${config.peerName}'s Profile\n${userSection.join("\n\n")}`);
-      }
+      const count = typeof rep === "string" ? rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#")).length : 0;
+      logCache("write", "userContext", `${count} conclusions`);
     }
 
-    // Section 2: Recent Work (CONSOLIDATED)
-    // Combines: claude conclusions, session summary, self-reflection
-    // Prioritizes concrete work items over vague summaries
     if (claudeContextResult.status === "fulfilled" && claudeContextResult.value) {
       const context = claudeContextResult.value as any;
-      setCachedClaudeContext(context); // Cache
+      setCachedClaudeContext(context);
       const rep = context.representation;
-      const claudeRepConclusionCount = typeof rep === "string" ? rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#")).length : 0;
-      logCache("write", "claudeContext", `${claudeRepConclusionCount} conclusions`);
-
-      if (rep) {
-        const repText = formatRepresentation(rep);
-        if (repText) {
-          contextParts.push(`## ${config.aiPeer}'s Work History (Self-Context)\n${repText}`);
-        }
-      }
+      const count = typeof rep === "string" ? rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#")).length : 0;
+      logCache("write", "claudeContext", `${count} conclusions`);
     }
 
-    // Session summary - only include SHORT summary (skip Extended History to reduce noise)
-    if (summariesResult.status === "fulfilled" && summariesResult.value) {
-      const s = summariesResult.value as any;
-      const shortSummary = s.shortSummary;
-      if (shortSummary?.content) {
-        contextParts.push(`## Recent Session Summary\n${shortSummary.content}`);
-      }
-      // Skip long_summary - it overlaps with conclusions and adds too many tokens
-    }
-
-    // AI dialectic summaries - always include when available
-    // Chat result may be a string or {content: string}
-    const userChatContent = userChatResult.status === "fulfilled"
-      ? (typeof userChatResult.value === "string" ? userChatResult.value : (userChatResult.value as any)?.content)
-      : null;
-    if (userChatContent) {
-      contextParts.push(`## AI Summary of ${config.peerName}\n${userChatContent}`);
-    }
-
-    const claudeChatContent = claudeChatResult.status === "fulfilled"
-      ? (typeof claudeChatResult.value === "string" ? claudeChatResult.value : (claudeChatResult.value as any)?.content)
-      : null;
-    if (claudeChatContent) {
-      contextParts.push(`## AI Self-Reflection (What ${config.aiPeer} Has Been Doing)\n${claudeChatContent}`);
-    }
-
-    // Fetch context from linked workspaces (reads only, writes stay local)
-    const linkedWorkspaces = getLinkedWorkspaces();
-    if (linkedWorkspaces.length > 0) {
-      spinner.update("Fetching linked context");
-      logAsync("linked-context", `Fetching from ${linkedWorkspaces.length} linked workspace(s): ${linkedWorkspaces.join(", ")}`);
-
-      const linkedResults = await Promise.allSettled(
-        linkedWorkspaces.map(async (ws) => {
-          const linkedClient = new Honcho({
-            apiKey: config.apiKey,
-            baseURL: getHonchoBaseUrl(config),
-            workspaceId: ws,
-          });
-          const linkedPeer = await linkedClient.peer(config.peerName);
-          return { ws, context: await linkedPeer.context({ maxConclusions: 10, includeMostFrequent: true }) };
-        })
-      );
-
-      for (const result of linkedResults) {
-        if (result.status === "fulfilled" && result.value.context) {
-          const { ws, context } = result.value;
-          const rep = formatRepresentation((context as any).representation);
-          if (rep) {
-            contextParts.push(`## Linked Context (${ws})\n${rep}`);
-          }
-          logAsync("linked-context", `${ws}: loaded`);
-        } else if (result.status === "rejected") {
-          logAsync("linked-context", `Failed: ${result.reason}`);
-        }
-      }
-    }
-
-    // Stop spinner
+    // Stop spinner; avoid stdout writes here to prevent UI artifacts.
     spinner.stop();
 
-    logFlow("complete", `Memory loaded: ${contextParts.length} sections, ${successCount}/5 API calls succeeded`);
-
-    // Output all context
-    console.log(`\n[${config.aiPeer}/Honcho Memory Loaded]\n\n${contextParts.join("\n\n")}`);
+    logFlow("complete", `Cache warmed: ${successCount}/2 context + 2 dialectic (fire-and-forget)`);
     process.exit(0);
   } catch (error) {
     logHook("session-start", `Error: ${error}`, { error: String(error) });
     spinner.stop();
-    // Degrade gracefully — workspace info was already shown above.
-    // Output whatever context we managed to collect.
-    if (contextParts.length > 0) {
-      console.log(`\n[${config.aiPeer}/Honcho Memory (partial)]\n\n${contextParts.join("\n\n")}`);
-    }
     process.exit(0);
   }
 }

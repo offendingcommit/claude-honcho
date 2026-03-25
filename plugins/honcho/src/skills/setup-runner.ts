@@ -23,19 +23,39 @@ async function setup(): Promise<void> {
   console.log(s.header("honcho setup"));
   console.log("");
 
-  // Check for API key
-  const apiKey = process.env.HONCHO_API_KEY;
+  // Check for API key — env var takes precedence, then config file
+  let apiKey = process.env.HONCHO_API_KEY;
+  let keySource = "environment";
+
   if (!apiKey) {
-    console.log(s.warn("HONCHO_API_KEY is not set"));
+    // Try reading from config file
+    try {
+      const { readFileSync } = await import("fs");
+      const configRaw = readFileSync(getConfigPath(), "utf-8");
+      const configData = JSON.parse(configRaw);
+      apiKey = configData.apiKey;
+      keySource = "config";
+    } catch {
+      // No config file or no apiKey in it
+    }
+  }
+
+  if (!apiKey) {
+    console.log(s.warn("No API key found (checked env and config)"));
     console.log("");
     console.log("  1. Get a free key at https://app.honcho.dev");
-    console.log("  2. Add to ~/.zshrc or ~/.bashrc:");
-    console.log(s.dim('     export HONCHO_API_KEY="your-key-here"'));
-    console.log("  3. Restart Claude Code");
+    if (process.platform === "win32") {
+      console.log("  2. Set it in PowerShell:");
+      console.log(s.dim('     setx HONCHO_API_KEY "your-key-here"'));
+    } else {
+      console.log("  2. Add to ~/.zshrc or ~/.bashrc:");
+      console.log(s.dim('     export HONCHO_API_KEY="your-key-here"'));
+    }
+    console.log("  3. Restart Claude Code and run /honcho:setup");
     process.exit(1);
   }
 
-  console.log(s.success("HONCHO_API_KEY is set"));
+  console.log(s.success(`API key found (${keySource})`));
   console.log("");
 
   // Validate connection
@@ -68,6 +88,11 @@ async function setup(): Promise<void> {
   if (!configExists()) {
     console.log(s.section("Creating config"));
     try {
+      // Root-level globals (owned by user/CLI, written only at initial setup)
+      const { saveRootField } = await import("../config.js");
+      saveRootField("apiKey", config.apiKey);
+      saveRootField("peerName", config.peerName);
+      // Per-host config goes in hosts.claude_code via saveConfig
       saveConfig({
         apiKey: config.apiKey,
         peerName: config.peerName,

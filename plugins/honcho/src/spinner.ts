@@ -101,13 +101,15 @@ export interface SpinnerOptions {
  * Write directly to the terminal, bypassing stdout/stderr capture
  */
 function writeTTY(text: string): void {
+  if (process.platform === "win32") {
+    process.stderr.write(text);
+    return;
+  }
   try {
-    // Try to write directly to /dev/tty (works on macOS/Linux)
     const fd = openSync("/dev/tty", "w");
     writeSync(fd, text);
     closeSync(fd);
   } catch {
-    // Fallback to stderr if /dev/tty not available
     process.stderr.write(text);
   }
 }
@@ -124,6 +126,8 @@ export class Spinner {
   private ttyFd: number | null = null;
   private useAscii: boolean;
 
+  private exitHandler: (() => void) | null = null;
+
   constructor(options: SpinnerOptions = {}) {
     // Auto-detect or force ASCII mode
     this.useAscii = options.style === "ascii" || !supportsUnicode();
@@ -131,6 +135,10 @@ export class Spinner {
   }
 
   private write(text: string) {
+    if (process.platform === "win32") {
+      process.stderr.write(text);
+      return;
+    }
     try {
       if (this.ttyFd === null) {
         this.ttyFd = openSync("/dev/tty", "w");
@@ -247,6 +255,22 @@ export class Spinner {
     this.message = message;
     this.frame = 0;
 
+    // Restore cursor if process exits unexpectedly (crash, timeout, signal)
+    this.exitHandler = () => {
+      try {
+        if (process.platform === "win32") {
+          process.stderr.write("\r\x1b[K\x1b[?25h");
+        } else {
+          const fd = openSync("/dev/tty", "w");
+          writeSync(fd, "\r\x1b[K\x1b[?25h");
+          closeSync(fd);
+        }
+      } catch {
+        // Best-effort cleanup
+      }
+    };
+    process.on("exit", this.exitHandler);
+
     // Hide cursor
     this.write("\x1b[?25l");
 
@@ -266,6 +290,12 @@ export class Spinner {
       this.interval = null;
     }
 
+    // Remove exit handler — clean shutdown, no longer needed
+    if (this.exitHandler) {
+      process.removeListener("exit", this.exitHandler);
+      this.exitHandler = null;
+    }
+
     // Clear line and show cursor
     this.write("\r\x1b[K\x1b[?25h");
 
@@ -282,6 +312,11 @@ export class Spinner {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
+    }
+
+    if (this.exitHandler) {
+      process.removeListener("exit", this.exitHandler);
+      this.exitHandler = null;
     }
 
     this.write("\r\x1b[K\x1b[?25h");
@@ -330,8 +365,13 @@ export async function playCooldown(message = "saving memory"): Promise<void> {
   return new Promise((resolve) => {
     let frame = 0;
     let ttyFd: number | null = null;
+    let finished = false;
 
     const write = (text: string) => {
+      if (process.platform === "win32") {
+        process.stderr.write(text);
+        return;
+      }
       try {
         if (ttyFd === null) {
           ttyFd = openSync("/dev/tty", "w");
@@ -355,6 +395,17 @@ export async function playCooldown(message = "saving memory"): Promise<void> {
 
     // Hide cursor
     write("\x1b[?25l");
+
+    const exitHandler = () => {
+      if (finished) return;
+      try {
+        write("\r\x1b[K\x1b[?25h");
+      } catch {
+        // Best-effort cleanup
+      }
+      closeTTY();
+    };
+    process.on("exit", exitHandler);
 
     const frames = useAscii ? asciiCooldownFrames : cooldownFrames;
     const dots = useAscii ? ["oooo", "ooo.", "oo..", "o...", "...."] : fadeDots;
@@ -387,7 +438,9 @@ export async function playCooldown(message = "saving memory"): Promise<void> {
       frame++;
 
       if (frame >= totalFrames) {
+        finished = true;
         clearInterval(interval);
+        process.removeListener("exit", exitHandler);
         // Final clear and goodbye
         write("\r\x1b[K");
         const sparkle = useAscii ? (c.c5 + "*" + c.reset) : (c.c5 + stars.sparkle2 + c.reset);

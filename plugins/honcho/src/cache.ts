@@ -136,13 +136,30 @@ function getMessageRefreshThreshold(): number {
   return config.messageThreshold ?? 50;
 }
 
+// Known keys in ContextCache — anything else is a ghost from older versions
+const CONTEXT_CACHE_KNOWN_KEYS = new Set([
+  "userContext", "claudeContext", "summaries", "messageCount", "lastRefreshMessageCount",
+]);
+
 export function loadContextCache(): ContextCache {
   ensureCacheDir();
   if (!existsSync(CONTEXT_CACHE_FILE)) {
     return {};
   }
   try {
-    return JSON.parse(readFileSync(CONTEXT_CACHE_FILE, "utf-8"));
+    const raw = JSON.parse(readFileSync(CONTEXT_CACHE_FILE, "utf-8"));
+    // Strip ghost keys left by older plugin versions (e.g. "aiContext")
+    let cleaned = false;
+    for (const key of Object.keys(raw)) {
+      if (!CONTEXT_CACHE_KNOWN_KEYS.has(key)) {
+        delete raw[key];
+        cleaned = true;
+      }
+    }
+    if (cleaned) {
+      writeFileSync(CONTEXT_CACHE_FILE, JSON.stringify(raw, null, 2));
+    }
+    return raw;
   } catch {
     return {};
   }
@@ -199,6 +216,11 @@ export function incrementMessageCount(): number {
   cache.messageCount = (cache.messageCount || 0) + 1;
   saveContextCache(cache);
   return cache.messageCount;
+}
+
+export function getMessageCount(): number {
+  const cache = loadContextCache();
+  return cache.messageCount || 0;
 }
 
 export function shouldRefreshKnowledgeGraph(): boolean {

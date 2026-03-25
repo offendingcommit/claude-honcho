@@ -227,19 +227,23 @@ export function renderHonchoAsciiCompact(): string[] {
  * Write directly to TTY with explicit UTF-8 encoding
  * Includes escape sequence to ensure terminal is in UTF-8 mode
  */
-function writeTTY(text: string, switchToUtf8 = false): void {
+export function writeTTY(text: string, switchToUtf8 = false): void {
+  if (process.platform === "win32") {
+    if (switchToUtf8) {
+      process.stdout.write(Buffer.from("\x1b%G", "utf8"));
+    }
+    process.stdout.write(Buffer.from(text, "utf8"));
+    return;
+  }
   try {
     const fd = openSync("/dev/tty", "w");
-    // Optionally switch terminal to UTF-8 mode (ESC % G)
     if (switchToUtf8) {
       writeSync(fd, Buffer.from("\x1b%G", "utf8"));
     }
-    // Write as UTF-8 buffer explicitly
     const buffer = Buffer.from(text, "utf8");
     writeSync(fd, buffer);
     closeSync(fd);
   } catch {
-    // Fallback to stdout with UTF-8 buffer
     if (switchToUtf8) {
       process.stdout.write(Buffer.from("\x1b%G", "utf8"));
     }

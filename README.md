@@ -3,6 +3,7 @@
 [![Honcho Banner](./assets/honcho_clawd.png)](https://honcho.dev)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Version](https://img.shields.io/badge/version-0.2.3-blue)](https://github.com/plastic-labs/claude-honcho)
 [![Honcho](https://img.shields.io/badge/Honcho-Memory%20API-blue)](https://honcho.dev)
 
 A plugin marketplace for Claude Code, powered by [Honcho](https://honcho.dev) from Plastic Labs.
@@ -59,7 +60,7 @@ curl -fsSL https://bun.sh/install | bash
 
 ### Step 2: Set Environment Variables
 
-Add these to your shell config (`~/.zshrc`, `~/.bashrc`, or `~/.profile`):
+**macOS / Linux** -- add these to your shell config (`~/.zshrc`, `~/.bashrc`, or `~/.profile`):
 
 ```bash
 # Required
@@ -75,6 +76,19 @@ Then reload your shell:
 ```bash
 source ~/.zshrc  # or ~/.bashrc
 ```
+
+**Windows (PowerShell)** -- set a persistent user environment variable:
+
+```powershell
+# Required
+[Environment]::SetEnvironmentVariable("HONCHO_API_KEY", "hch-your-api-key-here", "User")
+
+# Optional
+[Environment]::SetEnvironmentVariable("HONCHO_PEER_NAME", $env:USERNAME, "User")
+[Environment]::SetEnvironmentVariable("HONCHO_WORKSPACE", "claude_code", "User")
+```
+
+Then restart your terminal so the new variables take effect.
 
 ### Step 3: Install the Plugin
 
@@ -383,10 +397,11 @@ The plugin hooks into Claude Code's lifecycle events:
 1. **Check your API key is set:**
 
    ```bash
-   echo $HONCHO_API_KEY
+   echo $HONCHO_API_KEY          # macOS / Linux
+   echo $env:HONCHO_API_KEY      # Windows PowerShell
    ```
 
-   If empty, add it to your shell config and `source` it.
+   If empty, set it (see Step 2 in Quick Start) and restart your terminal.
 
 2. **Check the plugin is installed:**
 

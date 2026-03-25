@@ -50,31 +50,14 @@ export function visMessage(direction: HookDirection, hookName: string, message: 
 }
 
 /**
- * Build context injection details string
+ * Build context injection status string
  * Used by user-prompt hook (which outputs JSON systemMessage — works)
  */
 export function visContextLine(hookName: string, opts: {
-  conclusions?: number;
-  insights?: number;
   cached?: boolean;
-  cacheAge?: number;
-  sections?: number;
 }): string {
-  const parts: string[] = [];
-  if (opts.conclusions) parts.push(`${opts.conclusions} conclusions`);
-  if (opts.insights) parts.push(`${opts.insights} insights`);
-  if (opts.sections) parts.push(`${opts.sections} sections`);
-
-  let suffix = "";
-  if (opts.cached) {
-    const age = opts.cacheAge ? ` ${opts.cacheAge}s ago` : "";
-    suffix = ` (cached${age})`;
-  }
-
-  if (parts.length > 0) {
-    return formatLine("in", hookName, `injected ${parts.join(", ")}${suffix}`);
-  }
-  return "";
+  const suffix = opts.cached ? " (cached)" : "";
+  return formatLine("in", hookName, `injected conclusions${suffix}`);
 }
 
 /**

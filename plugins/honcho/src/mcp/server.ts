@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from "fs";
 import {
   loadConfig,
   saveConfig,
+  saveRootField,
   getHonchoClientOptions,
   getSessionName,
   getConfigPath,
@@ -20,8 +21,10 @@ import {
   setDetectedHost,
   type HonchoCLAUDEConfig,
   type SessionStrategy,
+  type ReasoningLevel,
   type HonchoEnvironment,
 } from "../config.js";
+import { honchoSessionUrl } from "../styles.js";
 import {
   getLastActiveCwd,
   clearIdCache,
@@ -105,6 +108,7 @@ function handleGetConfig(cwd: string) {
     sessions: cfg.sessions ?? {},
     messageUpload: cfg.messageUpload ?? {},
     contextRefresh: cfg.contextRefresh ?? {},
+    reasoningLevel: cfg.reasoningLevel ?? "medium",
     localContext: cfg.localContext ?? {},
     enabled: cfg.enabled !== false,
     logging: cfg.logging !== false,
@@ -118,9 +122,12 @@ function handleGetConfig(cwd: string) {
     ? endpointInfo.type === "production" ? "platform" : endpointInfo.type
     : null;
 
+  const sessionUrl = cfg && sessionName ? honchoSessionUrl(cfg.workspace, sessionName) : null;
+
   const current = cfg ? {
     workspace: cfg.workspace,
     session: sessionName,
+    sessionUrl,
     peerName: cfg.peerName,
     aiPeer: cfg.aiPeer,
     host: `${endpointLabel} (${endpointInfo?.url})`,
@@ -265,6 +272,8 @@ function handleSetConfig(args: Record<string, unknown>) {
     case "peerName":
       previousValue = cfg.peerName;
       cfg.peerName = String(value);
+      // peerName is a global field — write to root (user-directed action)
+      saveRootField("peerName", cfg.peerName);
       clearPeerCache();
       clearUserContextOnly();
       // Clear persisted session names — they embed the peer name
@@ -291,24 +300,29 @@ function handleSetConfig(args: Record<string, unknown>) {
       }
       break;
 
-    case "endpoint.environment":
+    case "endpoint.environment": {
       previousValue = cfg.endpoint?.environment;
       if (!cfg.endpoint) cfg.endpoint = {};
       // Accept "platform" as alias for "production"
       const envVal = String(value) === "platform" ? "production" : String(value);
       cfg.endpoint.environment = envVal as HonchoEnvironment;
       cfg.endpoint.baseUrl = undefined;
+      // endpoint is a global field — write to root (user-directed action)
+      saveRootField("endpoint", cfg.endpoint);
       clearIdCache();
       clearUserContextOnly();
       clearClaudeContextOnly();
       cacheInvalidation = { cleared: ["all IDs", "all context"], reason: "Endpoint changed" };
       break;
+    }
 
     case "endpoint.baseUrl":
       previousValue = cfg.endpoint?.baseUrl;
       if (!cfg.endpoint) cfg.endpoint = {};
       cfg.endpoint.baseUrl = String(value);
       cfg.endpoint.environment = undefined;
+      // endpoint is a global field — write to root (user-directed action)
+      saveRootField("endpoint", cfg.endpoint);
       clearIdCache();
       clearUserContextOnly();
       clearClaudeContextOnly();
@@ -339,6 +353,8 @@ function handleSetConfig(args: Record<string, unknown>) {
     case "globalOverride":
       previousValue = cfg.globalOverride ?? false;
       cfg.globalOverride = Boolean(value);
+      // globalOverride is a root-level flag — write to root (user-directed)
+      saveRootField("globalOverride", cfg.globalOverride);
       break;
 
     case "enabled":
@@ -390,6 +406,11 @@ function handleSetConfig(args: Record<string, unknown>) {
       previousValue = cfg.contextRefresh?.skipDialectic;
       if (!cfg.contextRefresh) cfg.contextRefresh = {};
       cfg.contextRefresh.skipDialectic = Boolean(value);
+      break;
+
+    case "reasoningLevel":
+      previousValue = cfg.reasoningLevel ?? "medium";
+      cfg.reasoningLevel = String(value) as ReasoningLevel;
       break;
 
     case "localContext.maxEntries":
@@ -457,6 +478,7 @@ function handleSetConfig(args: Record<string, unknown>) {
     sessions: cfg.sessions ?? {},
     messageUpload: cfg.messageUpload ?? {},
     contextRefresh: cfg.contextRefresh ?? {},
+    reasoningLevel: cfg.reasoningLevel ?? "medium",
     localContext: cfg.localContext ?? {},
     enabled: cfg.enabled !== false,
     logging: cfg.logging !== false,
@@ -468,6 +490,11 @@ function handleSetConfig(args: Record<string, unknown>) {
     ? "Close and restart all active Claude Code sessions. Open sessions still use the previous config and will write to the wrong Honcho session."
     : undefined;
 
+  // Include session URL when session-affecting fields change
+  const cwd = getLastActiveCwd() || process.cwd();
+  const newSessionName = SESSION_AFFECTING_FIELDS.has(field) ? getSessionName(cwd) : undefined;
+  const sessionUrl = newSessionName ? honchoSessionUrl(cfg.workspace, newSessionName) : undefined;
+
   return {
     content: [{
       type: "text",
@@ -478,6 +505,7 @@ function handleSetConfig(args: Record<string, unknown>) {
         newValue: value,
         cacheInvalidation,
         restartWarning,
+        sessionUrl,
         warnings: warnings.length ? warnings : undefined,
         resolved,
       }, null, 2),
@@ -541,6 +569,11 @@ export async function runMcpServer(): Promise<void> {
                 type: "string",
                 description: "Natural language question about the user",
               },
+              reasoning_level: {
+                type: "string",
+                enum: ["minimal", "low", "medium", "high", "max"],
+                description: "Reasoning budget for this query. Use 'low' for simple lookups, 'medium' for general questions, 'high'/'max' for complex reasoning about the user's context. Defaults to config value or 'medium'.",
+              },
             },
             required: ["query"],
           },
@@ -595,6 +628,7 @@ export async function runMcpServer(): Promise<void> {
                   "contextRefresh.messageThreshold",
                   "contextRefresh.ttlSeconds",
                   "contextRefresh.skipDialectic",
+                  "reasoningLevel",
                   "localContext.maxEntries",
                   "sessions.set",
                   "sessions.remove",
@@ -662,11 +696,12 @@ export async function runMcpServer(): Promise<void> {
 
         case "chat": {
           const query = args?.query as string;
+          const reasoningLevel = (args?.reasoning_level as string) ?? config.reasoningLevel ?? "medium";
           const userPeer = await honcho.peer(config.peerName);
 
           const response = await userPeer.chat(query, {
             session,
-            reasoningLevel: "medium",
+            reasoningLevel,
           });
 
           return {

@@ -11,46 +11,70 @@ Walk the user through first-time Honcho configuration so persistent memory works
 
 ### 1. Check current state
 
-Run this command to check if `HONCHO_API_KEY` is already set:
+Check if `HONCHO_API_KEY` is set as an environment variable OR if `~/.honcho/config.json` already has an apiKey:
 
 ```bash
-echo "${HONCHO_API_KEY:+set}"
+bun -e "
+const fs = require('fs');
+const path = require('path');
+const configPath = path.join(require('os').homedir(), '.honcho', 'config.json');
+const envKey = process.env.HONCHO_API_KEY;
+let configKey = '';
+try { configKey = JSON.parse(fs.readFileSync(configPath, 'utf-8')).apiKey || ''; } catch {}
+console.log(envKey || configKey ? 'set' : 'not set');
+"
 ```
 
 If the output is `set`, skip to step 3 (validation). Otherwise continue.
 
-### 2. Direct user to get an API key
+### 2. Direct user to set their API key
 
-Tell the user:
+Tell the user to get a free API key at https://app.honcho.dev, then set it as an environment variable.
 
-> You need a Honcho API key. Get one for free at https://app.honcho.dev
->
-> Once you have it, add this line to your shell config (`~/.zshrc` or `~/.bashrc`):
+Detect the platform and give the appropriate command:
+
+**If Windows** (check with `bun -e "console.log(process.platform)"` if unsure):
+
+> Set your API key in PowerShell:
+> ```powershell
+> setx HONCHO_API_KEY "your-key-here"
+> ```
+> Then restart Claude Code and run `/honcho:setup` again.
+
+**If macOS / Linux:**
+
+> Add to your shell config (`~/.zshrc` or `~/.bashrc`):
 > ```
 > export HONCHO_API_KEY="your-key-here"
 > ```
->
-> Then restart Claude Code so it picks up the new environment variable.
+> Then restart Claude Code and run `/honcho:setup` again.
 
-Wait for the user to confirm they have set the key. If they paste the key directly in chat, warn them not to share API keys in conversation and remind them to set it as an environment variable instead.
+IMPORTANT: Do NOT ask the user to paste their API key into the chat. Keys must be set via environment variable outside of Claude Code.
+
+Stop here and wait for the user to come back after restarting. Do not proceed to validation until the user runs `/honcho:setup` again.
 
 ### 3. Validate the API key
 
-Test the connection by running the setup runner. Find the plugin directory first:
+Run the setup runner to validate the connection:
 
 ```bash
-HONCHO_PLUGIN="${HONCHO_PLUGIN_DIR:-$HOME/.honcho/plugins/claude-honcho/plugins/honcho}"
-bun run "$HONCHO_PLUGIN/src/skills/setup-runner.ts"
+bun run "${CLAUDE_PLUGIN_ROOT}/src/skills/setup-runner.ts"
 ```
 
-If it succeeds, the key is valid and the config file has been created.
+If `CLAUDE_PLUGIN_ROOT` is not set, resolve the path:
+
+```bash
+bun -e "const h=require('os').homedir();const p=require('path');console.log(p.join(h,'.claude','plugins','cache','honcho','honcho'))"
+```
+
+Then find the version directory inside that path and run the setup runner from there.
+
+If it succeeds, the key is valid and the full config file has been created.
 
 If it fails, help the user troubleshoot:
-- Key not set: re-check shell config and restart Claude Code
 - Authentication error: key may be invalid, get a new one from https://app.honcho.dev
 - Network error: check internet connection
-- Plugin not found: check that claude-honcho is installed at `~/.honcho/plugins/claude-honcho`
 
 ### 4. Confirm setup
 
-Tell the user that Honcho is configured and memory will be active on their next session. Suggest they restart Claude Code or open a new chat to see the memory context load.
+Tell the user that Honcho is configured and memory will be active on their next session. Suggest they restart Claude Code to see the memory context load.

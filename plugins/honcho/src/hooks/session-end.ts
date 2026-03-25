@@ -1,5 +1,5 @@
 import { Honcho } from "@honcho-ai/sdk";
-import { loadConfig, getSessionForPath, getSessionName, getHonchoClientOptions, isPluginEnabled, getCachedStdin } from "../config.js";
+import { loadConfig, getSessionName, getHonchoClientOptions, isPluginEnabled, getCachedStdin } from "../config.js";
 import { existsSync, readFileSync } from "fs";
 import {
   getQueuedMessages,
@@ -29,20 +29,16 @@ interface TranscriptEntry {
     role?: string;
     content: string | Array<{ type: string; text?: string; name?: string; input?: any }>;
   };
-  // Alternative format sometimes seen
   role?: string;
   content?: string | Array<{ type: string; text?: string }>;
 }
 
 /**
  * Check if assistant content is meaningful prose vs just tool acknowledgment
- * We want to capture explanations, summaries, recommendations - not "I'll run git status"
  */
 function isMeaningfulAssistantContent(content: string): boolean {
-  // Skip very short responses
   if (content.length < 50) return false;
 
-  // Skip responses that are mostly tool invocation announcements
   const toolAnnouncements = [
     /^(I'll|Let me|I'm going to|I will|Now I'll|First,? I'll)\s+(run|use|execute|check|read|look at|search|edit|write|create)/i,
     /^Running\s+/i,
@@ -55,12 +51,10 @@ function isMeaningfulAssistantContent(content: string): boolean {
     }
   }
 
-  // Skip if it's just acknowledging tool results without explanation
   if (/^(The command|The file|The output|This shows|Here's what)/i.test(content.trim()) && content.length < 150) {
     return false;
   }
 
-  // Keep: explanations, summaries, recommendations, analysis
   const meaningfulPatterns = [
     /\b(because|since|therefore|however|although|this means|in summary|to summarize|the issue is|the problem is|I recommend|you should|we should|this approach|the solution|key point|important|note that)\b/i,
     /\b(implemented|fixed|resolved|completed|added|created|updated|changed|modified|refactored)\b/i,
@@ -72,7 +66,6 @@ function isMeaningfulAssistantContent(content: string): boolean {
     }
   }
 
-  // If it's long enough, probably meaningful
   return content.length >= 200;
 }
 
@@ -90,8 +83,6 @@ function parseTranscript(transcriptPath: string): Array<{ role: string; content:
     for (const line of lines) {
       try {
         const entry: TranscriptEntry = JSON.parse(line);
-
-        // Handle different transcript formats
         const entryType = entry.type || entry.role;
         const messageContent = entry.message?.content || entry.content;
 
@@ -112,13 +103,11 @@ function parseTranscript(transcriptPath: string): Array<{ role: string; content:
           if (typeof messageContent === "string") {
             assistantContent = messageContent;
           } else if (Array.isArray(messageContent)) {
-            // Extract text blocks (skip tool_use blocks - those are captured by PostToolUse)
             const textBlocks = messageContent
               .filter((p) => p.type === "text" && p.text)
               .map((p) => p.text!)
               .join("\n\n");
 
-            // Also note what tools were used for context
             const toolUses = messageContent
               .filter((p) => p.type === "tool_use")
               .map((p: any) => p.name)
@@ -126,7 +115,6 @@ function parseTranscript(transcriptPath: string): Array<{ role: string; content:
 
             assistantContent = textBlocks;
 
-            // If there were tool uses but minimal text, note what tools were used
             if (toolUses.length > 0 && textBlocks.length < 100) {
               assistantContent = textBlocks + (textBlocks ? "\n" : "") + `[Used tools: ${toolUses.join(", ")}]`;
             }
@@ -134,7 +122,6 @@ function parseTranscript(transcriptPath: string): Array<{ role: string; content:
 
           if (assistantContent && assistantContent.trim()) {
             const isMeaningful = isMeaningfulAssistantContent(assistantContent);
-            // Truncate but keep more of meaningful content
             const maxLen = isMeaningful ? 3000 : 1500;
             messages.push({
               role: "assistant",
@@ -179,13 +166,20 @@ function extractWorkItems(assistantMessages: string[]): string[] {
   return workItems.slice(0, 10);
 }
 
+/**
+ * SessionEnd hook — structured for resilience against cancellation.
+ *
+ * Priority order (most critical first):
+ *   1. Local summary (instant, zero risk — survives any cancellation)
+ *   2. Parallel: cooldown animation + API uploads (critical data first)
+ *   3. Session end marker (nice-to-have metadata)
+ */
 export async function handleSessionEnd(): Promise<void> {
   const config = loadConfig();
   if (!config) {
     process.exit(0);
   }
 
-  // Early exit if plugin is disabled
   if (!isPluginEnabled()) {
     process.exit(0);
   }
@@ -204,80 +198,74 @@ export async function handleSessionEnd(): Promise<void> {
   const reason = hookInput.reason || "unknown";
   const transcriptPath = hookInput.transcript_path;
   const instanceId = hookInput.session_id || getInstanceIdForCwd(cwd);
+  const sessionName = getSessionName(cwd, instanceId || undefined);
 
-  // Set log context
-  setLogContext(cwd, getSessionName(cwd, instanceId || undefined));
-
-  // Play cooldown animation
-  await playCooldown("saving memory");
-
+  setLogContext(cwd, sessionName);
   logHook("session-end", `Session ending`, { reason });
 
+  // =========================================================
+  // Phase 1: LOCAL WORK (instant, survives any cancellation)
+  // =========================================================
+  const transcriptMessages = transcriptPath ? parseTranscript(transcriptPath) : [];
+  const allAssistant = transcriptMessages.filter((msg) => msg.role === "assistant");
+  const meaningful = allAssistant.filter((msg) => msg.isMeaningful);
+  const other = allAssistant.filter((msg) => !msg.isMeaningful);
+  const assistantMessages = [
+    ...meaningful.slice(-25),
+    ...other.slice(-15),
+  ].slice(-40);
+
+  // Save local summary FIRST — even if the hook gets killed after this,
+  // the next session-start will have context about what happened.
+  const workItems = extractWorkItems(assistantMessages.map((m) => m.content));
+  const existingContext = loadClaudeLocalContext();
+  let recentActivity = "";
+  if (existingContext) {
+    const activityMatch = existingContext.match(/## Recent Activity\n([\s\S]*)/);
+    if (activityMatch) {
+      recentActivity = activityMatch[1];
+    }
+  }
+  const newSummary = generateClaudeSummary(
+    sessionName,
+    workItems,
+    assistantMessages.map((m) => m.content)
+  );
+  saveClaudeLocalContext(newSummary + recentActivity);
+
+  // =========================================================
+  // Phase 2: PARALLEL API UPLOADS + ANIMATION
+  // Cooldown animation runs concurrently with network I/O
+  // so we don't waste budget on cosmetics before critical work.
+  // =========================================================
   try {
     const honcho = new Honcho(getHonchoClientOptions(config));
-    const sessionName = getSessionName(cwd, instanceId || undefined);
 
-    // Get session and peers using new fluent API
-    const session = await honcho.session(sessionName);
-    const userPeer = await honcho.peer(config.peerName);
-    const aiPeer = await honcho.peer(config.aiPeer);
+    const [session, userPeer, aiPeer] = await Promise.all([
+      honcho.session(sessionName),
+      honcho.peer(config.peerName),
+      honcho.peer(config.aiPeer),
+    ]);
 
-    // Parse transcript
-    const transcriptMessages = transcriptPath ? parseTranscript(transcriptPath) : [];
+    // Build all upload batches before sending
+    const queuedMessages = getQueuedMessages(cwd);
+    logHook("session-end", `Processing ${queuedMessages.length} queued + ${assistantMessages.length} assistant msgs`);
 
-    // =====================================================
-    // Step 1: Upload queued user messages (backup for failed fire-and-forget)
-    // Only upload messages for THIS session (by cwd), not other sessions
-    // =====================================================
-    const queuedMessages = getQueuedMessages(cwd);  // Filter by current session's cwd
-    logHook("session-end", `Processing ${queuedMessages.length} queued messages`);
-    if (queuedMessages.length > 0) {
-      // Chunk oversized messages instead of dropping them
-      const userMessages = queuedMessages.flatMap((msg) => {
-        const chunks = chunkContent(msg.content);
-        return chunks.map(chunk =>
-          userPeer.message(chunk, {
-            createdAt: msg.timestamp,
-            metadata: {
-              instance_id: msg.instanceId || undefined,
-              session_affinity: sessionName,
-            },
-          })
-        );
-      });
-      if (userMessages.length > 0) {
-        logApiCall("session.addMessages", "POST", `${queuedMessages.length} queued user messages (${userMessages.length} after chunking)`);
-        await session.addMessages(userMessages);
-      }
-      markMessagesUploaded(cwd);  // Only clear this session's messages
-    }
+    const userMessages = queuedMessages.flatMap((msg) => {
+      const chunks = chunkContent(msg.content);
+      return chunks.map(chunk =>
+        userPeer.message(chunk, {
+          createdAt: msg.timestamp,
+          metadata: {
+            instance_id: msg.instanceId || undefined,
+            session_affinity: sessionName,
+          },
+        })
+      );
+    });
 
-    // =====================================================
-    // Step 2: Save assistant messages that weren't captured by post-tool-use
-    // post-tool-use only logs tool activity, not Claude's prose responses
-    // This captures: explanations, summaries, recommendations, analysis
-    // =====================================================
-    let assistantMessages: Array<{ role: string; content: string; isMeaningful?: boolean; timestamp?: string }> = [];
-    if (config.saveMessages !== false && transcriptMessages.length > 0) {
-      // Extract assistant prose - prioritize meaningful content
-      const allAssistant = transcriptMessages.filter((msg) => msg.role === "assistant");
-
-      // Prioritize meaningful messages (explanations, summaries, etc.)
-      const meaningful = allAssistant.filter((msg) => msg.isMeaningful);
-      const other = allAssistant.filter((msg) => !msg.isMeaningful);
-
-      // Take all meaningful + recent others, up to 40 total
-      assistantMessages = [
-        ...meaningful.slice(-25),  // Keep more meaningful content
-        ...other.slice(-15),       // Keep some context
-      ].slice(-40);
-
-      // Upload assistant messages for claude peer knowledge extraction
-      // This is the KEY fix: capturing actual reasoning, not just tool calls
-      if (assistantMessages.length > 0) {
-        const meaningfulCount = assistantMessages.filter(m => m.isMeaningful).length;
-
-        const messagesToSend = assistantMessages.flatMap((msg) => {
+    const aiMessages = (config.saveMessages !== false && assistantMessages.length > 0)
+      ? assistantMessages.flatMap((msg) => {
           const chunks = chunkContent(msg.content);
           return chunks.map(chunk =>
             aiPeer.message(chunk, {
@@ -290,59 +278,83 @@ export async function handleSessionEnd(): Promise<void> {
               },
             })
           );
-        });
+        })
+      : [];
 
-        logApiCall("session.addMessages", "POST", `${assistantMessages.length} assistant msgs (${meaningfulCount} meaningful, ${messagesToSend.length} after chunking)`);
-        await session.addMessages(messagesToSend);
+    const endMarker = aiPeer.message(
+      `[Session ended] Reason: ${reason}, Messages: ${transcriptMessages.length}, Time: ${new Date().toISOString()}`,
+      {
+        createdAt: new Date().toISOString(),
+        metadata: {
+          instance_id: instanceId || undefined,
+          session_affinity: sessionName,
+        },
       }
-    }
-
-    // =====================================================
-    // Step 3: Generate and save claude self-summary
-    // =====================================================
-    const workItems = extractWorkItems(assistantMessages.map((m) => m.content));
-    const existingContext = loadClaudeLocalContext();
-
-    // Preserve recent activity from existing context
-    let recentActivity = "";
-    if (existingContext) {
-      const activityMatch = existingContext.match(/## Recent Activity\n([\s\S]*)/);
-      if (activityMatch) {
-        recentActivity = activityMatch[1];
-      }
-    }
-
-    const newSummary = generateClaudeSummary(
-      sessionName,
-      workItems,
-      assistantMessages.map((m) => m.content)
     );
 
-    // Append preserved activity
-    saveClaudeLocalContext(newSummary + recentActivity);
+    // Single addMessages call with everything — one round trip instead of three.
+    const allMessages = [...userMessages, ...aiMessages, endMarker];
 
-    // =====================================================
-    // Step 4: Log session end marker
-    // =====================================================
-    await session.addMessages([
-      aiPeer.message(
-        `[Session ended] Reason: ${reason}, Messages: ${transcriptMessages.length}, Time: ${new Date().toISOString()}`,
-        {
-          createdAt: new Date().toISOString(),
-          metadata: {
-            instance_id: instanceId || undefined,
-            session_affinity: sessionName,
-          },
+    if (allMessages.length > 0) {
+      const meaningfulCount = assistantMessages.filter(m => m.isMeaningful).length;
+      logApiCall("session.addMessages", "POST",
+        `${userMessages.length} user + ${aiMessages.length} assistant (${meaningfulCount} meaningful) + 1 marker`);
+
+      // Start API upload immediately; run animation concurrently.
+      const uploadPromise = session.addMessages(allMessages);
+
+      // Trap SIGTERM/SIGINT to prevent default termination while upload
+      // is in flight. The handler is a no-op — its only purpose is to
+      // keep the process alive. Cooldown's own exit handler cleans up
+      // the cursor if the process exits unexpectedly.
+      const sigHandler = () => {};
+      process.on("SIGINT", sigHandler);
+      if (process.platform === "win32") {
+        process.on("SIGBREAK", sigHandler);
+      } else {
+        process.on("SIGTERM", sigHandler);
+      }
+
+      const removeSigHandlers = () => {
+        process.removeListener("SIGINT", sigHandler);
+        if (process.platform === "win32") {
+          process.removeListener("SIGBREAK", sigHandler);
+        } else {
+          process.removeListener("SIGTERM", sigHandler);
         }
-      ),
-    ]);
+      };
+
+      // Hard safety net: if the upload hangs beyond SDK timeout + margin,
+      // force exit. Local summary was already saved in phase 1.
+      const hardTimeout = setTimeout(() => {
+        logHook("session-end", "Hard timeout reached — forcing exit");
+        removeSigHandlers();
+        process.exit(0);
+      }, 12_000);
+      hardTimeout.unref();
+
+      let uploadSucceeded = false;
+      await Promise.all([
+        uploadPromise.then(() => { uploadSucceeded = true; }).finally(() => {
+          clearTimeout(hardTimeout);
+          removeSigHandlers();
+        }),
+        playCooldown("saving memory"),
+      ]);
+
+      if (uploadSucceeded && queuedMessages.length > 0) {
+        markMessagesUploaded(cwd);
+      }
+    } else {
+      await playCooldown("saving memory");
+    }
 
     const meaningfulCount = assistantMessages.filter(m => m.isMeaningful).length;
     logHook("session-end", `Session saved: ${assistantMessages.length} assistant msgs (${meaningfulCount} meaningful), ${queuedMessages.length} queued msgs`);
     process.exit(0);
   } catch (error) {
     logHook("session-end", `Error: ${error}`, { error: String(error) });
-    console.error(`[honcho] Warning: ${error}`);
-    process.exit(1);
+    // Local summary was already saved in phase 1 — not a total loss.
+    process.exit(0);
   }
 }

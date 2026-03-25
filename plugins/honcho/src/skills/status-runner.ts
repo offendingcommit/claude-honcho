@@ -5,7 +5,7 @@
  */
 import { Honcho, type Page, type Conclusion } from "@honcho-ai/sdk";
 import type { QueueStatus } from "@honcho-ai/sdk";
-import { loadConfig, getHonchoClientOptions, getEndpointInfo } from "../config.js";
+import { loadConfig, getHonchoClientOptions, getEndpointInfo, getSessionName } from "../config.js";
 import * as s from "../styles.js";
 
 async function status(): Promise<void> {
@@ -40,6 +40,7 @@ async function status(): Promise<void> {
 
     console.log(`  ${s.label("Connection")}:  ${s.success("connected")} ${s.dim(`(${latency}ms)`)}`);
     console.log(`  ${s.label("Workspace")}:   ${config.workspace} ${s.dim(`@ ${endpointInfo.url}`)}`);
+    console.log(`  ${s.label("Session")}:     ${getSessionName(process.cwd())}`);
     console.log(`  ${s.label("Peers")}:       ${config.peerName} / ${config.aiPeer}`);
 
     // Observation queue — messages being processed into conclusions

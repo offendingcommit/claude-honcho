@@ -31,6 +31,8 @@ export interface LocalContextConfig {
   maxEntries?: number;
 }
 
+export type ReasoningLevel = "minimal" | "low" | "medium" | "high" | "max";
+
 export type SessionStrategy = "per-directory" | "git-branch" | "chat-instance";
 
 export type HonchoEnvironment = "production" | "local";
@@ -60,6 +62,18 @@ export interface HostConfig {
   aiPeer?: string;
   /** Other host keys whose workspaces to read context from (writes stay local) */
   linkedHosts?: string[];
+  /** Per-host overrides for settings that may differ across tools */
+  enabled?: boolean;
+  logging?: boolean;
+  saveMessages?: boolean;
+  sessionStrategy?: SessionStrategy;
+  sessionPeerPrefix?: boolean;
+  /** Default reasoning level for Honcho dialectic calls (default: "medium") */
+  reasoningLevel?: ReasoningLevel;
+  messageUpload?: MessageUploadConfig;
+  contextRefresh?: ContextRefreshConfig;
+  localContext?: LocalContextConfig;
+  endpoint?: HonchoEndpointConfig;
 }
 
 let _detectedHost: HonchoHost | null = null;
@@ -150,6 +164,8 @@ interface HonchoFileConfig {
   sessionStrategy?: SessionStrategy;
   /** Prefix session names with peerName (default: true, disable for solo use) */
   sessionPeerPrefix?: boolean;
+  /** Default reasoning level for Honcho dialectic calls (default: "medium") */
+  reasoningLevel?: ReasoningLevel;
   hosts?: Record<string, HostConfig>;
   /** When true, flat workspace/aiPeer fields apply to ALL hosts,
    *  ignoring host-specific blocks. When false (default), each host
@@ -182,6 +198,8 @@ export interface HonchoCLAUDEConfig {
   sessions?: Record<string, string>;
   /** Save messages to Honcho (default: true) */
   saveMessages?: boolean;
+  /** Default reasoning level for Honcho dialectic calls (default: "medium") */
+  reasoningLevel?: ReasoningLevel;
   /** Token-based upload limits */
   messageUpload?: MessageUploadConfig;
   /** Context retrieval settings */
@@ -196,6 +214,20 @@ export interface HonchoCLAUDEConfig {
   logging?: boolean;
   /** When true, flat workspace/aiPeer fields apply to ALL hosts */
   globalOverride?: boolean;
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return a === b;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== "object") return false;
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const keys = new Set([...Object.keys(aObj), ...Object.keys(bObj)]);
+  for (const key of keys) {
+    if (!deepEqual(aObj[key], bObj[key])) return false;
+  }
+  return true;
 }
 
 const CONFIG_DIR = join(homedir(), ".honcho");
@@ -236,13 +268,15 @@ function resolveConfig(raw: HonchoFileConfig, host: HonchoHost): HonchoCLAUDECon
   const apiKey = process.env.HONCHO_API_KEY || raw.apiKey;
   if (!apiKey) return null;
 
-  const peerName = raw.peerName || process.env.HONCHO_PEER_NAME || process.env.USER || "user";
+  const peerName = raw.peerName || process.env.HONCHO_PEER_NAME || process.env.USER || process.env.USERNAME || "user";
 
   // Resolve host-specific fields
   let workspace: string;
   let aiPeer: string;
 
-  const hostBlock = raw.hosts?.[host];
+  const hostBlock = raw.hosts?.[host]
+    ?? raw.hosts?.[host.replace(/_/g, "-")]
+    ?? raw.hosts?.[host.replace(/-/g, "_")];
 
   if (raw.globalOverride === true) {
     // Global override: flat fields apply to ALL hosts
@@ -268,22 +302,26 @@ function resolveConfig(raw: HonchoFileConfig, host: HonchoHost): HonchoCLAUDECon
   // Resolve linked hosts
   const linkedHosts = hostBlock?.linkedHosts ?? [];
 
+  // Per-host settings: check hosts.<name>.X first, fall back to root X.
+  // This lets the user set global defaults at root (via CLI) while
+  // individual integrations can override per-host without touching root.
   const config: HonchoCLAUDEConfig = {
     apiKey,
     peerName,
     workspace,
     aiPeer,
     linkedHosts: linkedHosts.length ? linkedHosts : undefined,
-    sessionStrategy: raw.sessionStrategy,
-    sessionPeerPrefix: raw.sessionPeerPrefix,
+    sessionStrategy: hostBlock?.sessionStrategy ?? raw.sessionStrategy,
+    sessionPeerPrefix: hostBlock?.sessionPeerPrefix ?? raw.sessionPeerPrefix,
     sessions: raw.sessions,
-    saveMessages: raw.saveMessages,
-    messageUpload: raw.messageUpload,
-    contextRefresh: raw.contextRefresh,
-    endpoint: raw.endpoint,
-    localContext: raw.localContext,
-    enabled: raw.enabled,
-    logging: raw.logging,
+    saveMessages: hostBlock?.saveMessages ?? raw.saveMessages,
+    reasoningLevel: hostBlock?.reasoningLevel ?? raw.reasoningLevel,
+    messageUpload: hostBlock?.messageUpload ?? raw.messageUpload,
+    contextRefresh: hostBlock?.contextRefresh ?? raw.contextRefresh,
+    endpoint: hostBlock?.endpoint ?? raw.endpoint,
+    localContext: hostBlock?.localContext ?? raw.localContext,
+    enabled: hostBlock?.enabled ?? raw.enabled,
+    logging: hostBlock?.logging ?? raw.logging,
     globalOverride: raw.globalOverride,
   };
 
@@ -302,7 +340,7 @@ export function loadConfigFromEnv(host?: HonchoHost): HonchoCLAUDEConfig | null 
   }
 
   const resolvedHost = host ?? getDetectedHost();
-  const peerName = process.env.HONCHO_PEER_NAME || process.env.USER || "user";
+  const peerName = process.env.HONCHO_PEER_NAME || process.env.USER || process.env.USERNAME || "user";
   const workspace = process.env.HONCHO_WORKSPACE || DEFAULT_WORKSPACE[resolvedHost];
   const hostPeerEnv = resolvedHost === "cursor"
     ? process.env.HONCHO_CURSOR_PEER
@@ -356,18 +394,24 @@ function mergeWithEnvVars(config: HonchoCLAUDEConfig): HonchoCLAUDEConfig {
 }
 
 /**
- * Read-merge-write: reads existing file, merges in changes, writes back.
- * This prevents one host from clobbering fields owned by the other.
- * Host-specific fields (workspace, aiPeer, linkedHosts) live in the
- * hosts block. Legacy flat fields (workspace, cursorPeer, claudePeer)
- * are no longer written — they may still exist in old config files but
- * are only consulted as fallbacks when the hosts block is missing.
+ * Write-back: read-merge-write to avoid clobbering other hosts' config.
+ *
+ * Convention:
+ *   - Root-level keys (apiKey, peerName, enabled, etc.) are owned by
+ *     the user or the honcho CLI.  This integration NEVER writes them.
+ *   - hosts.<this-host> is owned by this integration and carries all
+ *     per-host settings (workspace, aiPeer, enabled, logging, ...).
+ *   - sessions is shared across hosts -- written at root.
+ *
+ * resolveConfig() reads host block first, falls back to root, so the
+ * user's root-level defaults still apply until overridden per-host.
  */
 export function saveConfig(config: HonchoCLAUDEConfig): void {
   if (!existsSync(CONFIG_DIR)) {
     mkdirSync(CONFIG_DIR, { recursive: true });
   }
 
+  // Re-read from disk to avoid clobbering other tools' changes
   let existing: HonchoFileConfig = {};
   if (existsSync(CONFIG_FILE)) {
     try {
@@ -377,47 +421,85 @@ export function saveConfig(config: HonchoCLAUDEConfig): void {
     }
   }
 
-  // Merge shared fields
-  existing.apiKey = config.apiKey;
-  existing.peerName = config.peerName;
-  existing.sessionStrategy = config.sessionStrategy;
-  existing.sessionPeerPrefix = config.sessionPeerPrefix;
-  existing.sessions = config.sessions;
-  existing.saveMessages = config.saveMessages;
-  existing.messageUpload = config.messageUpload;
-  existing.contextRefresh = config.contextRefresh;
-  existing.endpoint = config.endpoint;
-  existing.localContext = config.localContext;
-  existing.enabled = config.enabled;
-  existing.logging = config.logging;
+  // Sessions are shared across hosts -- write at root
+  if (config.sessions !== undefined) {
+    existing.sessions = config.sessions;
+  }
 
-  // Write host-specific fields into hosts block
+  // Everything else goes in the host block.
+  // Keep workspace/aiPeer host-local, but avoid materializing root defaults
+  // into new host overrides. This preserves root fallback behavior.
   const host = getDetectedHost();
   if (!existing.hosts) existing.hosts = {};
-  existing.hosts[host] = {
-    workspace: config.workspace,
-    aiPeer: config.aiPeer,
-    ...(config.linkedHosts?.length ? { linkedHosts: config.linkedHosts } : {}),
+  const existingHost: HostConfig = existing.hosts[host] ?? {};
+
+  const hostEntry: HostConfig = {};
+  if (config.linkedHosts?.length) hostEntry.linkedHosts = config.linkedHosts;
+
+  const setHostIfExplicit = <K extends keyof HostConfig>(
+    key: K,
+    value: HostConfig[K],
+    rootValue: unknown
+  ) => {
+    if (value === undefined) return;
+    const hasHostOverride = Object.prototype.hasOwnProperty.call(existingHost, key);
+    if (hasHostOverride || !deepEqual(value, rootValue)) {
+      hostEntry[key] = value;
+    }
   };
 
-  // Write globalOverride when explicitly set; preserve existing value otherwise
-  if (config.globalOverride !== undefined) {
-    existing.globalOverride = config.globalOverride;
+  // Only persist workspace/aiPeer to host block if the block already had them
+  // or if they differ from the default for this host.  This prevents root
+  // fallback values from being materialized into host overrides.
+  setHostIfExplicit("workspace", config.workspace, existing.workspace ?? DEFAULT_WORKSPACE[host]);
+  setHostIfExplicit("aiPeer", config.aiPeer, existing.aiPeer ?? DEFAULT_AI_PEER[host]);
+
+  // Don't persist env-only overrides to the host block.
+  // mergeWithEnvVars() may have set enabled=false or logging=false from
+  // HONCHO_ENABLED / HONCHO_LOGGING env vars — those are runtime overrides
+  // that should not be materialized to disk.
+  const enabledForSave = process.env.HONCHO_ENABLED === "false" && config.enabled === false
+    ? existingHost.enabled  // preserve what was on disk
+    : config.enabled;
+  const loggingForSave = process.env.HONCHO_LOGGING === "false" && config.logging === false
+    ? existingHost.logging
+    : config.logging;
+
+  setHostIfExplicit("enabled", enabledForSave, existing.enabled);
+  setHostIfExplicit("logging", loggingForSave, existing.logging);
+  setHostIfExplicit("saveMessages", config.saveMessages, existing.saveMessages);
+  setHostIfExplicit("sessionStrategy", config.sessionStrategy, existing.sessionStrategy);
+  setHostIfExplicit("sessionPeerPrefix", config.sessionPeerPrefix, existing.sessionPeerPrefix);
+  setHostIfExplicit("reasoningLevel", config.reasoningLevel, existing.reasoningLevel);
+  setHostIfExplicit("messageUpload", config.messageUpload, existing.messageUpload);
+  setHostIfExplicit("contextRefresh", config.contextRefresh, existing.contextRefresh);
+  setHostIfExplicit("localContext", config.localContext, existing.localContext);
+  setHostIfExplicit("endpoint", config.endpoint, existing.endpoint);
+
+  existing.hosts[host] = hostEntry;
+
+  writeFileSync(CONFIG_FILE, JSON.stringify(existing, null, 2));
+}
+
+/**
+ * Write a single root-level field to config.json.
+ * ONLY for explicit user-directed actions (MCP set_config) on fields
+ * that are genuinely global (apiKey, peerName, globalOverride).
+ * Hooks and routine operations must NEVER call this.
+ */
+export function saveRootField(field: string, value: unknown): void {
+  if (!existsSync(CONFIG_DIR)) {
+    mkdirSync(CONFIG_DIR, { recursive: true });
   }
 
-  // Clean legacy flat fields when hosts block exists
-  if (existing.hosts && !existing.globalOverride) {
-    delete existing.cursorPeer;
-    delete existing.claudePeer;
-    // Only remove flat workspace if it duplicates a host block value
-    // (avoids breaking configs where globalOverride isn't set yet)
-    const hostWorkspaces = Object.values(existing.hosts).map((h: any) => h.workspace);
-    if (existing.workspace && hostWorkspaces.includes(existing.workspace)) {
-      delete existing.workspace;
-    }
-    delete existing.aiPeer;
+  let existing: Record<string, unknown> = {};
+  if (existsSync(CONFIG_FILE)) {
+    try {
+      existing = JSON.parse(readFileSync(CONFIG_FILE, "utf-8"));
+    } catch {}
   }
 
+  existing[field] = value;
   writeFileSync(CONFIG_FILE, JSON.stringify(existing, null, 2));
 }
 
@@ -546,35 +628,54 @@ export function setPluginEnabled(enabled: boolean): void {
 }
 
 /**
- * Get workspace names from linked hosts.
- * Returns the workspace names configured for each linked host key.
- * If a linked host has no workspace set, uses its default.
+ * Linked host workspace + endpoint resolution from raw config.
+ * Endpoint falls back to root endpoint when the host block omits it.
  */
-export function getLinkedWorkspaces(): string[] {
+export interface LinkedWorkspaceConfig {
+  hostKey: string;
+  workspace: string;
+  endpoint?: HonchoEndpointConfig;
+}
+
+export function getLinkedWorkspaceConfigs(): LinkedWorkspaceConfig[] {
   const config = loadConfig();
   if (!config?.linkedHosts?.length) return [];
 
   const cfgPath = getConfigPath();
   if (!existsSync(cfgPath)) return [];
 
-  let raw: Record<string, any>;
+  let raw: HonchoFileConfig;
   try {
-    raw = JSON.parse(readFileSync(cfgPath, "utf-8"));
+    raw = JSON.parse(readFileSync(cfgPath, "utf-8")) as HonchoFileConfig;
   } catch {
     return [];
   }
 
-  const workspaces: string[] = [];
+  const linked: LinkedWorkspaceConfig[] = [];
   for (const hostKey of config.linkedHosts) {
-    const block = raw.hosts?.[hostKey];
+    // Normalize: try exact key, then underscore, then dash variants
+    const block = raw.hosts?.[hostKey]
+      ?? raw.hosts?.[hostKey.replace(/-/g, "_")]
+      ?? raw.hosts?.[hostKey.replace(/_/g, "-")];
     // Use that host's configured workspace, or fall back to host key as workspace name
     const ws = block?.workspace ?? hostKey;
     // Don't include our own workspace
     if (ws !== config.workspace) {
-      workspaces.push(ws);
+      linked.push({
+        hostKey,
+        workspace: ws,
+        endpoint: block?.endpoint ?? raw.endpoint,
+      });
     }
   }
-  return workspaces;
+  return linked;
+}
+
+/**
+ * Get workspace names from linked hosts.
+ */
+export function getLinkedWorkspaces(): string[] {
+  return getLinkedWorkspaceConfigs().map((entry) => entry.workspace);
 }
 
 /**
@@ -608,18 +709,25 @@ export interface HonchoClientOptions {
   apiKey: string;
   baseURL: string;
   workspaceId: string;
+  timeout?: number;
+  maxRetries?: number;
 }
 
 /** Get the base URL for Honcho API. Priority: baseUrl > environment > production */
-export function getHonchoBaseUrl(config: HonchoCLAUDEConfig): string {
-  if (config.endpoint?.baseUrl) {
-    const url = config.endpoint.baseUrl;
+export function getHonchoBaseUrlForEndpoint(endpoint?: HonchoEndpointConfig): string {
+  if (endpoint?.baseUrl) {
+    const url = endpoint.baseUrl;
     return url.endsWith("/v3") ? url : `${url}/v3`;
   }
-  if (config.endpoint?.environment === "local") {
+  if (endpoint?.environment === "local") {
     return HONCHO_BASE_URLS.local;
   }
   return HONCHO_BASE_URLS.production;
+}
+
+/** Get the base URL for a resolved runtime config. */
+export function getHonchoBaseUrl(config: HonchoCLAUDEConfig): string {
+  return getHonchoBaseUrlForEndpoint(config.endpoint);
 }
 
 export function getHonchoClientOptions(config: HonchoCLAUDEConfig): HonchoClientOptions {
@@ -627,6 +735,8 @@ export function getHonchoClientOptions(config: HonchoCLAUDEConfig): HonchoClient
     apiKey: config.apiKey,
     baseURL: getHonchoBaseUrl(config),
     workspaceId: config.workspace,
+    timeout: 8000,
+    maxRetries: 1,
   };
 }
 
