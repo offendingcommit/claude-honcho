@@ -5,6 +5,11 @@
   "description": "Honcho plugins for Claude Code (fork by Offending Commit)",
   "repository": "https://github.com/offendingcommit/claude-honcho",
   "license": "MIT",
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "typecheck": "pnpm -r --if-present typecheck",
+    "release": "semantic-release"
+  },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",
     "@semantic-release/commit-analyzer": "^13.0.0",

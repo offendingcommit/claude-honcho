@@ -11,15 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          bun-version: latest
-      - name: Install (honcho plugin)
-        working-directory: plugins/honcho
-        run: bun install --frozen-lockfile || bun install
-      - name: Typecheck (honcho plugin)
-        working-directory: plugins/honcho
-        run: bunx tsc --noEmit || echo "no tsconfig, skipping"
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --if-present typecheck
 
   validate-json:
     runs-on: ubuntu-latest

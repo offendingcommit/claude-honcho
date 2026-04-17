@@ -37,8 +37,8 @@ claude-honcho/
 
 ```bash
 git clone https://github.com/offendingcommit/claude-honcho.git
-cd claude-honcho/plugins/honcho
-bun install
+cd claude-honcho
+pnpm install
 ```
 
 ## Working on the `honcho` Plugin
