@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/offendingcommit/claude-honcho/compare/v1.1.0-oc...v1.2.0-oc) (2026-04-17)
+
+### Features
+
+* **honcho:** add query_conclusions, schedule_dream, list_sessions tools + skills ([de9b4f6](https://github.com/offendingcommit/claude-honcho/commit/de9b4f6a48f204c4a58a24b8a9376f9c6df69d7e))
+
 ## [1.1.0](https://github.com/offendingcommit/claude-honcho/compare/v1.0.1-oc...v1.1.0-oc) (2026-04-17)
 
 ### Features
