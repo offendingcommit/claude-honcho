@@ -7,7 +7,7 @@
     "email": "hello@plasticlabs.ai"
   },
   "homepage": "https://honcho.dev",
-  "repository": "https://github.com/plastic-labs/claude-honcho",
+  "repository": "https://github.com/offendingcommit/claude-honcho",
   "license": "MIT",
   "keywords": ["memory", "context", "ai", "honcho", "persistence"],
   "hooks": "./hooks/hooks.json",

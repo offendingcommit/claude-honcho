@@ -1,8 +1,9 @@
 {
   "name": "honcho",
   "owner": {
-    "name": "Plastic Labs",
-    "email": "hello@plasticlabs.ai"
+    "name": "Offending Commit",
+    "email": "djfoxyslpr@gmail.com",
+    "url": "https://github.com/offendingcommit/claude-honcho"
   },
   "metadata": {
     "description": "Honcho plugins for Claude Code - memory, development tools, and more",

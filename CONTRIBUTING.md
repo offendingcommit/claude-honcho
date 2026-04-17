@@ -36,7 +36,7 @@ claude-honcho/
 ### Clone and Install
 
 ```bash
-git clone https://github.com/plastic-labs/claude-honcho.git
+git clone https://github.com/offendingcommit/claude-honcho.git
 cd claude-honcho/plugins/honcho
 bun install
 ```
@@ -102,4 +102,4 @@ To contribute new skills, create a directory under `plugins/honcho-dev/skills/` 
 
 ## Questions?
 
-Open an issue at [github.com/plastic-labs/claude-honcho](https://github.com/plastic-labs/claude-honcho/issues).
+Open an issue at [github.com/offendingcommit/claude-honcho](https://github.com/offendingcommit/claude-honcho/issues).
