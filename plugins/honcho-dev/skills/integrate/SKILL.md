@@ -525,6 +525,63 @@ When integrating Honcho into an existing codebase:
   - [ ] context() for conversation history
 - [ ] Store messages after each exchange to build user models
 
+## Self-Hosting: LLM Routing Constraints
+
+**Skip this section if you're using the hosted Honcho at app.honcho.dev.** This applies only to users running their own Honcho server (e.g., self-hosted with a Cloudflare AI Gateway + Ollama Cloud setup).
+
+Honcho has two provider types — `cf` and `custom` — and they are **not interchangeable across subsystems**. The constraint is structured-output support, not speed or cost.
+
+### The rule
+
+| Subsystem | Required provider class | Why |
+|-----------|------------------------|-----|
+| `deriver` | `cf` / Gemini only | Uses `response_format={"type": "json_schema"}` for pydantic-validated output |
+| `summary` | `cf` / Gemini only | Same — pydantic schema enforcement |
+| `dialectic` (all tiers) | `cf` or `custom` | Tool calls + free-form — any model works |
+| `dream` | `cf` or `custom` | Free-form reasoning — any model works |
+
+The `cf` provider routes through Cloudflare AI Gateway to Google Gemini, which honors OpenAI's `response_format=json_schema` server-side. The `custom` provider routes through CF AI Gateway's `custom-ollama` route to Ollama Cloud, which **does not translate `response_format` into Ollama's native JSON mode** — every Ollama Cloud model tested (GLM-5.1, nemotron, qwen, devstral) returns free-form text when a schema is requested, which breaks `PromptRepresentation` parsing with `ValidationError: Invalid JSON`.
+
+CF AI Gateway itself is transparent in both paths — the limitation lives at the upstream provider. If Ollama Cloud ever adds `response_format` translation, the `custom` route would start working without any gateway change.
+
+### Related gotcha — Gemini thought_signatures on multi-iteration tool loops
+
+CF AI Gateway's `compat` route drops Gemini's `thoughtSignature` field between tool iterations. Any `cf/gemini-*` dialectic tier with `maxToolIterations > 1` AND `thinkingBudgetTokens > 0` will return HTTP 400 on iteration 2+. Fix: set `thinkingBudgetTokens: "0"` for any `cf/gemini` path where `maxToolIterations > 1`.
+
+### Verification before switching models
+
+When moving deriver or summary to a new model, run one representation batch through it and watch logs for `ValidationError for PromptRepresentation`. If it fires, the new route doesn't honor structured outputs and must be reverted. This also applies if Ollama Cloud (or any future gateway) starts implementing `response_format` translation — re-test before committing.
+
+### Example sane allocation
+
+```yaml
+# values.yaml for a self-hosted Honcho Helm chart
+deriver:
+  provider: cf
+  model: google-ai-studio/gemini-3.1-flash-lite-preview
+summary:
+  provider: cf
+  model: google-ai-studio/gemini-3.1-flash-lite-preview
+dialectic:
+  levels:
+    minimal:
+      provider: custom
+      model: nemotron-3-nano:30b-cloud
+      thinkingBudgetTokens: "0"
+      maxToolIterations: "1"
+      maxOutputTokens: "250"
+    low:
+      provider: custom
+      model: devstral-small-2:24b-cloud
+      thinkingBudgetTokens: "0"
+      maxToolIterations: "2"
+    medium:
+      provider: custom
+      model: glm-5.1:cloud
+      thinkingBudgetTokens: "0"  # see thought_signature gotcha above
+      maxToolIterations: "2"
+```
+
 ## Common Mistakes to Avoid
 
 1. **Multiple workspaces**: Use ONE workspace per application

@@ -53,6 +53,8 @@ AskUserQuestion:
       description: "TTL, message threshold, dialectic settings"
     - label: "Message upload"
       description: "Token limits, summarization settings"
+    - label: "SDK timeout"
+      description: "HTTP timeout (ms) for Honcho SDK requests — currently {resolved.sdkTimeout || 'default (30000)'}"
 ```
 
 Always include current values in the description so the user can see what's set.
@@ -181,6 +183,33 @@ AskUserQuestion:
 ```
 
 Then ask for the new value and call `set_config`.
+
+### SDK timeout
+
+Applies to every Honcho SDK HTTP request, including `peer.chat()` (dialectic).
+The built-in default is 30 seconds; raise it if you use `high`/`max` reasoning levels or
+a self-hosted backend that runs large local models.
+
+Ask for the new value (in milliseconds, e.g. `30000` = 30s, `60000` = 60s):
+
+```
+AskUserQuestion:
+  question: "Set SDK timeout in milliseconds"
+  header: "Timeout"
+  options:
+    - label: "30000 (30s, default)"
+      description: "Covers most medium dialectic reasoning"
+    - label: "60000 (60s)"
+      description: "Recommended for high/max reasoning or local models"
+    - label: "120000 (120s)"
+      description: "Long-running multi-turn dialectic on slow backends"
+    - label: "Custom value"
+      description: "Enter any positive integer in ms"
+```
+
+Call `set_config` with `sdkTimeout` set to the chosen number. Note: the
+`HONCHO_TIMEOUT` environment variable overrides this field at runtime — if
+the user has it set, surface that in the result as an env-shadow warning.
 
 ## Step 4: Loop
 
