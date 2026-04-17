@@ -38,3 +38,17 @@ for (const t of targets) {
   writeFileSync(p, JSON.stringify(json, null, 2) + "\n");
   console.log(`bumped ${t.path} -> ${version}`);
 }
+
+// README version badge — shields.io URL-encodes the dash in `1.0.1-oc` to `--`
+const badgeVersion = version.replace(/-/g, "--");
+const readmePath = join(root, "README.md");
+const readme = readFileSync(readmePath, "utf8");
+const updated = readme.replace(
+  /(\[!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-).+?(-blue\))/,
+  `$1${badgeVersion}$2`,
+);
+if (updated !== readme) {
+  writeFileSync(readmePath, updated);
+  console.log(`bumped README.md badge -> ${version}`);
+}
+

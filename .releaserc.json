@@ -16,6 +16,7 @@
       {
         "assets": [
           "CHANGELOG.md",
+          "README.md",
           "package.json",
           ".claude-plugin/marketplace.json",
           "plugins/honcho/.claude-plugin/plugin.json",
