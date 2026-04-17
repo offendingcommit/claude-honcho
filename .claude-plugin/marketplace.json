@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "Honcho plugins for Claude Code - memory, development tools, and more",
-    "version": "1.0.1-oc"
+    "version": "1.1.0-oc"
   },
   "plugins": [
     {
       "name": "honcho",
       "source": "./plugins/honcho",
       "description": "Persistent memory for Claude Code sessions using Honcho",
-      "version": "1.0.1-oc",
+      "version": "1.1.0-oc",
       "keywords": [
         "memory",
         "context",
@@ -26,7 +26,7 @@
       "name": "honcho-dev",
       "source": "./plugins/honcho-dev",
       "description": "Skills for building AI applications with the Honcho SDK",
-      "version": "1.0.1-oc",
+      "version": "1.1.0-oc",
       "keywords": [
         "sdk",
         "development",

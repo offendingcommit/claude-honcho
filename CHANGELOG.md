@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/offendingcommit/claude-honcho/compare/v1.0.1-oc...v1.1.0-oc) (2026-04-17)
+
+### Features
+
+* **release:** also bump README version badge ([57470a3](https://github.com/offendingcommit/claude-honcho/commit/57470a39a5a69a664b7dae9d95fd3974a93b121a))
+
 ## [1.0.1](https://github.com/offendingcommit/claude-honcho/compare/v1.0.0-oc...v1.0.1-oc) (2026-04-17)
 
 ### Bug Fixes

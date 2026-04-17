@@ -3,7 +3,7 @@
 [![Honcho Banner](./assets/honcho_clawd.png)](https://honcho.dev)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-0.2.4-blue)](https://github.com/offendingcommit/claude-honcho)
+[![Version](https://img.shields.io/badge/version-1.1.0--oc-blue)](https://github.com/offendingcommit/claude-honcho)
 [![CI](https://github.com/offendingcommit/claude-honcho/actions/workflows/ci.yml/badge.svg)](https://github.com/offendingcommit/claude-honcho/actions/workflows/ci.yml)
 [![Release](https://github.com/offendingcommit/claude-honcho/actions/workflows/release.yml/badge.svg)](https://github.com/offendingcommit/claude-honcho/actions/workflows/release.yml)
 [![Honcho](https://img.shields.io/badge/Honcho-Memory%20API-blue)](https://honcho.dev)
