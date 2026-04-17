@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/offendingcommit/claude-honcho/compare/v1.0.0-oc...v1.0.1-oc) (2026-04-17)
+
+### Bug Fixes
+
+* **release:** append -oc suffix to bumped file versions ([2232493](https://github.com/offendingcommit/claude-honcho/commit/2232493df5f575aa47324253da2845e4417b5c9c))
+
 ## 1.0.0 (2026-04-17)
 
 ### Features

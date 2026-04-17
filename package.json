@@ -1,6 +1,6 @@
 {
   "name": "claude-honcho-monorepo",
-  "version": "1.0.0",
+  "version": "1.0.1-oc",
   "private": true,
   "description": "Honcho plugins for Claude Code (fork by Offending Commit)",
   "repository": "https://github.com/offendingcommit/claude-honcho",

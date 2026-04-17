@@ -1,6 +1,6 @@
 {
   "name": "claude-honcho",
-  "version": "1.0.0",
+  "version": "1.0.1-oc",
   "description": "Persistent memory for Claude Code sessions using Honcho by Plastic Labs",
   "type": "module",
   "keywords": [
