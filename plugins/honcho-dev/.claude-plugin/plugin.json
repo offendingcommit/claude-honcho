@@ -1,6 +1,6 @@
 {
   "name": "honcho-dev",
-  "version": "0.2.4",
+  "version": "1.0.0",
   "description": "Skills for building AI applications with the Honcho SDK",
   "author": {
     "name": "Plastic Labs",
@@ -9,6 +9,11 @@
   "homepage": "https://honcho.dev",
   "repository": "https://github.com/offendingcommit/claude-honcho",
   "license": "MIT",
-  "keywords": ["sdk", "development", "migration", "honcho"],
+  "keywords": [
+    "sdk",
+    "development",
+    "migration",
+    "honcho"
+  ],
   "skills": "./skills/"
 }
