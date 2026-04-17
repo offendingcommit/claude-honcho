@@ -3,11 +3,13 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const version = process.argv[2];
-if (!version) {
+const baseVersion = process.argv[2];
+if (!baseVersion) {
   console.error("Usage: bump-versions.mjs <version>");
   process.exit(1);
 }
+// Fork suffix — keeps file versions aligned with the v${version}-oc tag format
+const version = baseVersion.includes("-") ? baseVersion : `${baseVersion}-oc`;
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
