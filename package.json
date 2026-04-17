@@ -1,0 +1,17 @@
+{
+  "name": "claude-honcho-monorepo",
+  "version": "0.2.4",
+  "private": true,
+  "description": "Honcho plugins for Claude Code (fork by Offending Commit)",
+  "repository": "https://github.com/offendingcommit/claude-honcho",
+  "license": "MIT",
+  "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.0",
+    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.0",
+    "@semantic-release/release-notes-generator": "^14.0.0",
+    "semantic-release": "^24.0.0"
+  }
+}
