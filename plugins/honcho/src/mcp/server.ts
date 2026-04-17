@@ -648,6 +648,48 @@ export async function runMcpServer(): Promise<void> {
           },
         },
         {
+          name: "query_conclusions",
+          description: "Semantic search across saved conclusions about the user. Use this to find specific knowledge Honcho has derived — more targeted than list_conclusions (which is just paginated). Returns conclusions ranked by relevance.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Semantic query (e.g. 'preferences for testing frameworks', 'what they like in code reviews')",
+              },
+              top_k: {
+                type: "number",
+                description: "Max results (default 10)",
+                default: 10,
+              },
+            },
+            required: ["query"],
+          },
+        },
+        {
+          name: "schedule_dream",
+          description: "Trigger Honcho's background memory consolidation (a 'dream'). Honcho will merge redundant conclusions and derive higher-level insights about the user. Use after a long or insight-rich session to improve memory quality. Returns immediately; consolidation runs async on Honcho's side.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              scope: {
+                type: "string",
+                enum: ["session", "workspace"],
+                description: "'session' (default) consolidates only the current session; 'workspace' consolidates across all sessions.",
+                default: "session",
+              },
+            },
+          },
+        },
+        {
+          name: "list_sessions",
+          description: "List sessions in the current Honcho workspace. Use this to discover past Claude Code sessions across all projects ('what was I working on yesterday?'). Returns session IDs you can pass to other tools.",
+          inputSchema: {
+            type: "object",
+            properties: {},
+          },
+        },
+        {
           name: "get_config",
           description: "Get the current Honcho plugin configuration, cache state, and diagnostic warnings",
           inputSchema: {
@@ -717,6 +759,34 @@ export async function runMcpServer(): Promise<void> {
 
     if (name === "set_config") {
       return handleSetConfig(args as Record<string, unknown>);
+    }
+
+    // ── Workspace-level tool (no session needed) ──
+
+    if (name === "list_sessions") {
+      try {
+        const page = await (honcho as any).sessions();
+        const items = (page?.items ?? []).map((s: any) => ({
+          id: s.id,
+          createdAt: s.createdAt ?? s.created_at,
+        }));
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              sessions: items,
+              total: page?.total,
+              page: page?.page,
+              pages: page?.pages,
+            }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
     }
 
     // ── Peer-only tools (no session needed) ──
@@ -852,6 +922,40 @@ export async function runMcpServer(): Promise<void> {
 
           return {
             content: [{ type: "text", text: JSON.stringify(ctx, null, 2) }],
+          };
+        }
+
+        case "query_conclusions": {
+          const query = args?.query as string;
+          const topK = (args?.top_k as number) ?? 10;
+          const conclusions = await activePeer
+            .conclusionsOf(config.peerName)
+            .query(query, topK);
+          const items = (conclusions ?? []).map((c: any) => ({
+            id: c.id,
+            content: c.content,
+            sessionId: c.sessionId ?? c.session_id,
+            createdAt: c.createdAt ?? c.created_at,
+          }));
+          return {
+            content: [{ type: "text", text: JSON.stringify(items, null, 2) }],
+          };
+        }
+
+        case "schedule_dream": {
+          const scope = (args?.scope as string) ?? "session";
+          const observer = activePeer.id ?? (observationMode === "unified" ? config.peerName : config.aiPeer);
+          const observed = observationMode === "unified" ? config.peerName : config.peerName;
+          await (honcho as any).scheduleDream({
+            observer,
+            observed,
+            ...(scope === "session" ? { session: session.id } : {}),
+          });
+          return {
+            content: [{
+              type: "text",
+              text: `Dream scheduled (${scope} scope). Honcho will consolidate memory in the background.`,
+            }],
           };
         }
 
