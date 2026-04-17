@@ -16,8 +16,12 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --if-present typecheck
+      - run: pnpm --filter claude-honcho build
 
   validate-json:
     runs-on: ubuntu-latest

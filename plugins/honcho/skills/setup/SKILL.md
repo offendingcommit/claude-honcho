@@ -58,7 +58,7 @@ Stop here and wait for the user to come back after restarting. Do not proceed to
 Run the setup runner to validate the connection:
 
 ```bash
-bun run "${CLAUDE_PLUGIN_ROOT}/src/skills/setup-runner.ts"
+bun run "${CLAUDE_PLUGIN_ROOT}/dist/src/skills/setup-runner.js"
 ```
 
 If `CLAUDE_PLUGIN_ROOT` is not set, resolve the path:
