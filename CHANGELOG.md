@@ -1,3 +1,9 @@
+## [1.3.0](https://github.com/offendingcommit/claude-honcho/compare/v1.2.0-oc...v1.3.0-oc) (2026-04-17)
+
+### Features
+
+* **honcho:** bundle plugin with bun build, ship dist/ instead of node_modules ([8794a88](https://github.com/offendingcommit/claude-honcho/commit/8794a88e6f9f7dfd9f3af58e5c849a93bd63e81e))
+
 ## [1.2.0](https://github.com/offendingcommit/claude-honcho/compare/v1.1.0-oc...v1.2.0-oc) (2026-04-17)
 
 ### Features
