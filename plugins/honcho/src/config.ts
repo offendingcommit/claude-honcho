@@ -175,6 +175,9 @@ interface HonchoFileConfig {
   reasoningLevel?: ReasoningLevel;
   /** Observation mode (default: "unified") */
   observationMode?: ObservationMode;
+  /** HTTP timeout (ms) for Honcho SDK requests (default: 30000).
+   *  Raise for high/max dialectic reasoning levels that may exceed 8s. */
+  sdkTimeout?: number;
   hosts?: Record<string, HostConfig>;
   /** When true, flat workspace/aiPeer fields apply to ALL hosts,
    *  ignoring host-specific blocks. When false (default), each host
@@ -226,8 +229,20 @@ export interface HonchoCLAUDEConfig {
   enabled?: boolean;
   /** Enable file logging to ~/.honcho/ (default: true) */
   logging?: boolean;
+  /** HTTP timeout (ms) for Honcho SDK requests (default: 30000).
+   *  Dialectic chat at high/max reasoning levels can exceed 8s; increase
+   *  this to avoid client-side aborts. Overridable via HONCHO_TIMEOUT env. */
+  sdkTimeout?: number;
   /** When true, flat workspace/aiPeer fields apply to ALL hosts */
   globalOverride?: boolean;
+}
+
+/** Parse HONCHO_TIMEOUT env var into a positive integer, or undefined. */
+function parseTimeoutEnv(): number | undefined {
+  const raw = process.env.HONCHO_TIMEOUT;
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -333,6 +348,7 @@ function resolveConfig(raw: HonchoFileConfig, host: HonchoHost): HonchoCLAUDECon
     localContext: hostBlock?.localContext ?? raw.localContext,
     enabled: hostBlock?.enabled ?? raw.enabled,
     logging: hostBlock?.logging ?? raw.logging,
+    sdkTimeout: parseTimeoutEnv() ?? raw.sdkTimeout,
     globalOverride: raw.globalOverride,
   };
 
@@ -367,6 +383,7 @@ export function loadConfigFromEnv(host?: HonchoHost): HonchoCLAUDEConfig | null 
     saveMessages: process.env.HONCHO_SAVE_MESSAGES !== "false",
     enabled: process.env.HONCHO_ENABLED !== "false",
     logging: process.env.HONCHO_LOGGING !== "false",
+    sdkTimeout: parseTimeoutEnv(),
   };
 
   if (endpoint) {
@@ -692,12 +709,16 @@ export function getHonchoBaseUrl(config: HonchoCLAUDEConfig): string {
   return getHonchoBaseUrlForEndpoint(config.endpoint);
 }
 
+/** Default SDK HTTP timeout (ms). Raised from 8000 to accommodate
+ *  multi-turn dialectic chat at high/max reasoning levels. See #25. */
+export const DEFAULT_SDK_TIMEOUT_MS = 30000;
+
 export function getHonchoClientOptions(config: HonchoCLAUDEConfig): HonchoClientOptions {
   return {
     apiKey: config.apiKey,
     baseURL: getHonchoBaseUrl(config),
     workspaceId: config.workspace,
-    timeout: 8000,
+    timeout: config.sdkTimeout ?? DEFAULT_SDK_TIMEOUT_MS,
     maxRetries: 1,
   };
 }
