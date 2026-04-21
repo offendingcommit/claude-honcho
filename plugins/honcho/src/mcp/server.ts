@@ -690,6 +690,87 @@ export async function runMcpServer(): Promise<void> {
           },
         },
         {
+          name: "get_queue_status",
+          description: "Check the processing queue status for background memory derivation tasks. Use after schedule_dream to see if consolidation has completed, or to diagnose stalled observation pipelines.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              session_id: {
+                type: "string",
+                description: "Optional session ID to scope the queue status to. Defaults to workspace-wide status.",
+              },
+            },
+          },
+        },
+        {
+          name: "get_peer_card",
+          description: "Get the peer card (trait/preference bullet list) for the current user or AI peer. The peer card is what Honcho uses as a quick-reference profile.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              peer: {
+                type: "string",
+                enum: ["user", "ai"],
+                description: "'user' returns the user's peer card (default). 'ai' returns the AI peer's card.",
+                default: "user",
+              },
+            },
+          },
+        },
+        {
+          name: "set_peer_card",
+          description: "Replace the peer card (trait/preference bullet list) for the current user or AI peer. Each item in the array is one bullet. Replaces the entire card — include all desired items.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              items: {
+                type: "array",
+                items: { type: "string" },
+                description: "Array of strings to set as the peer card. Each string is one bullet entry.",
+              },
+              peer: {
+                type: "string",
+                enum: ["user", "ai"],
+                description: "'user' sets the user's peer card (default). 'ai' sets the AI peer's card.",
+                default: "user",
+              },
+            },
+            required: ["items"],
+          },
+        },
+        {
+          name: "list_peers",
+          description: "List all peers in the current Honcho workspace. Useful for multi-agent setups or auditing what peer IDs exist.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              page: {
+                type: "number",
+                description: "Page number (1-indexed)",
+                default: 1,
+              },
+              size: {
+                type: "number",
+                description: "Results per page (max 100)",
+                default: 20,
+              },
+            },
+          },
+        },
+        {
+          name: "get_session_summaries",
+          description: "Get the short and long summaries Honcho has generated for a session. Use list_sessions to find session IDs. Defaults to the current session if no session_id is provided.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              session_id: {
+                type: "string",
+                description: "Session ID to retrieve summaries for. Defaults to the current directory's session.",
+              },
+            },
+          },
+        },
+        {
           name: "get_config",
           description: "Get the current Honcho plugin configuration, cache state, and diagnostic warnings",
           inputSchema: {
@@ -789,7 +870,82 @@ export async function runMcpServer(): Promise<void> {
       }
     }
 
+    // ── Workspace-level tools (no peer/session needed) ──
+
+    if (name === "get_queue_status") {
+      try {
+        const sessionId = args?.session_id as string | undefined;
+        const status = await honcho.queueStatus(
+          sessionId ? { session: sessionId } : undefined
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(status, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+
+    if (name === "list_peers") {
+      try {
+        const page = (args?.page as number) ?? 1;
+        const size = Math.min((args?.size as number) ?? 20, 100);
+        const result = await honcho.peers({ page, size });
+        const items = result.items.map((p: any) => ({
+          id: p.id,
+          createdAt: p.createdAt ?? p.created_at,
+        }));
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ items, total: result.total, page: result.page, pages: result.pages }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+
     // ── Peer-only tools (no session needed) ──
+
+    if (name === "get_peer_card" || name === "set_peer_card") {
+      try {
+        const peerTarget = (args?.peer as string) ?? "user";
+        const peerId = peerTarget === "ai" ? config.aiPeer : config.peerName;
+        const peer = await honcho.peer(peerId);
+
+        if (name === "get_peer_card") {
+          const card = await peer.getCard();
+          return {
+            content: [{ type: "text", text: JSON.stringify({ peer: peerId, peer_card: card }, null, 2) }],
+          };
+        }
+
+        // set_peer_card
+        const items = args?.items as string[];
+        if (!Array.isArray(items)) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ success: false, error: "items must be an array of strings" }) }],
+            isError: true,
+          };
+        }
+        const updated = await peer.setCard(items);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: true, peer: peerId, peer_card: updated }, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
 
     if (name === "list_conclusions" || name === "delete_conclusion") {
       try {
@@ -966,6 +1122,24 @@ export async function runMcpServer(): Promise<void> {
 
           return {
             content: [{ type: "text", text: typeof rep === "string" ? rep : JSON.stringify(rep, null, 2) }],
+          };
+        }
+
+        case "get_session_summaries": {
+          const targetSessionId = args?.session_id as string | undefined;
+          const targetSession = targetSessionId
+            ? await honcho.session(targetSessionId)
+            : session;
+          const summaries = await targetSession.summaries();
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                session_id: targetSession.id,
+                short_summary: summaries.shortSummary ?? null,
+                long_summary: summaries.longSummary ?? null,
+              }, null, 2),
+            }],
           };
         }
 
