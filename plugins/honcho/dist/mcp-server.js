@@ -29836,6 +29836,87 @@ async function runMcpServer() {
           }
         },
         {
+          name: "get_session_context",
+          description: "Get a curated, token-budget-aware snapshot of a session: recent messages plus an optional rolling summary of earlier ones. Use this to read what happened in a past session retrieved via list_sessions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              session_id: {
+                type: "string",
+                description: "Session ID to retrieve context for. Defaults to the current directory's session."
+              },
+              summary: {
+                type: "boolean",
+                description: "Include a rolling summary of messages before the cutoff (default: true).",
+                default: true
+              },
+              tokens: {
+                type: "number",
+                description: "Target token budget. Honcho fills this with the most recent messages that fit."
+              }
+            }
+          }
+        },
+        {
+          name: "search_peer_messages",
+          description: "Semantic search over messages sent by a specific peer (user or AI). More targeted than workspace search \u2014 filters to one author.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Search query"
+              },
+              peer: {
+                type: "string",
+                enum: ["user", "ai"],
+                description: "'user' searches the user's messages (default). 'ai' searches the AI peer's messages.",
+                default: "user"
+              },
+              limit: {
+                type: "number",
+                description: "Max results (1-50, default 10)",
+                default: 10
+              }
+            },
+            required: ["query"]
+          }
+        },
+        {
+          name: "create_conclusions",
+          description: "Save multiple conclusions about the user in a single call. Prefer this over calling create_conclusion repeatedly.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              contents: {
+                type: "array",
+                items: { type: "string" },
+                description: "Array of insight strings to save as conclusions."
+              }
+            },
+            required: ["contents"]
+          }
+        },
+        {
+          name: "get_working_representation",
+          description: "Get the live, session-scoped representation of a peer \u2014 what Honcho has assembled from this session's observations before any dream consolidation runs. Use this to debug what Honcho currently sees mid-session.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              peer: {
+                type: "string",
+                enum: ["user", "ai"],
+                description: "'user' returns the user's working representation (default). 'ai' returns the AI peer's.",
+                default: "user"
+              },
+              session_id: {
+                type: "string",
+                description: "Session ID to scope to. Defaults to the current directory's session."
+              }
+            }
+          }
+        },
+        {
           name: "get_config",
           description: "Get the current Honcho plugin configuration, cache state, and diagnostic warnings",
           inputSchema: {
@@ -29990,6 +30071,29 @@ async function runMcpServer() {
         };
       }
     }
+    if (name === "create_conclusions") {
+      try {
+        const contents = args?.contents;
+        if (!Array.isArray(contents) || contents.length === 0) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ success: false, error: "contents must be a non-empty array of strings" }) }],
+            isError: true
+          };
+        }
+        const observationMode = getObservationMode(config2);
+        const scopePeer = observationMode === "unified" ? await honcho.peer(config2.peerName) : await honcho.peer(config2.aiPeer);
+        const conclusionScope = scopePeer.conclusionsOf(config2.peerName);
+        const created = await conclusionScope.create(contents.map((content) => ({ content })));
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: true, created: created.length }) }]
+        };
+      } catch (error3) {
+        return {
+          content: [{ type: "text", text: `Error: ${error3 instanceof Error ? error3.message : String(error3)}` }],
+          isError: true
+        };
+      }
+    }
     if (name === "list_conclusions" || name === "delete_conclusion") {
       try {
         const observationMode = getObservationMode(config2);
@@ -30127,6 +30231,64 @@ async function runMcpServer() {
         }
         case "get_representation": {
           const rep = await activePeer.representation(contextTarget ? { target: contextTarget } : undefined);
+          return {
+            content: [{ type: "text", text: typeof rep === "string" ? rep : JSON.stringify(rep, null, 2) }]
+          };
+        }
+        case "get_session_context": {
+          const targetSessionId = args?.session_id;
+          const targetSession = targetSessionId ? await honcho.session(targetSessionId) : session;
+          const includeSummary = args?.summary ?? true;
+          const tokens = args?.tokens;
+          const ctx = await targetSession.context({
+            summary: includeSummary,
+            ...tokens !== undefined ? { tokens } : {}
+          });
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                session_id: ctx.sessionId,
+                summary: ctx.summary ? {
+                  content: ctx.summary.content,
+                  type: ctx.summary.summaryType,
+                  createdAt: ctx.summary.createdAt
+                } : null,
+                messages: ctx.messages.map((m) => ({
+                  id: m.id,
+                  content: m.content,
+                  peer_id: m.peer_id ?? m.peerId,
+                  created_at: m.created_at ?? m.createdAt
+                }))
+              }, null, 2)
+            }]
+          };
+        }
+        case "search_peer_messages": {
+          const query = args?.query;
+          const limit = args?.limit ?? 10;
+          const peerTarget = args?.peer ?? "user";
+          const peerId = peerTarget === "ai" ? config2.aiPeer : config2.peerName;
+          const searchPeer = await honcho.peer(peerId);
+          const results = await searchPeer.search(query, { limit });
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify(results.map((m) => ({
+                content: m.content,
+                peer_id: m.peer_id ?? m.peerId,
+                session_id: m.session_id ?? m.sessionId,
+                created_at: m.created_at ?? m.createdAt
+              })), null, 2)
+            }]
+          };
+        }
+        case "get_working_representation": {
+          const peerTarget = args?.peer ?? "user";
+          const peerId = peerTarget === "ai" ? config2.aiPeer : config2.peerName;
+          const targetSessionId = args?.session_id;
+          const targetSession = targetSessionId ? await honcho.session(targetSessionId) : session;
+          const rep = await targetSession.representation(peerId);
           return {
             content: [{ type: "text", text: typeof rep === "string" ? rep : JSON.stringify(rep, null, 2) }]
           };
