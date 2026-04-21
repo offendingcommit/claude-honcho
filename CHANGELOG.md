@@ -1,3 +1,10 @@
+## [1.4.0](https://github.com/offendingcommit/claude-honcho/compare/v1.3.0-oc...v1.4.0-oc) (2026-04-21)
+
+### Features
+
+* **mcp:** add get_queue_status, get/set_peer_card, list_peers, get_session_summaries tools ([07d1033](https://github.com/offendingcommit/claude-honcho/commit/07d103318f08fe2d224b08153e65f8f124389752))
+* **mcp:** add get_session_context, search_peer_messages, create_conclusions, get_working_representation ([bd6c665](https://github.com/offendingcommit/claude-honcho/commit/bd6c6654a1176e2ecd8418f1d60d53d0375389e3))
+
 ## [1.3.0](https://github.com/offendingcommit/claude-honcho/compare/v1.2.0-oc...v1.3.0-oc) (2026-04-17)
 
 ### Features

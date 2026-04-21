@@ -47,14 +47,14 @@ var __export = (target, all) => {
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
 var __require = import.meta.require;
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/api-version.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/api-version.js
 var require_api_version = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.API_VERSION = undefined;
   exports.API_VERSION = "v3";
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/http/errors.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/http/errors.js
 var require_errors = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.ConnectionError = exports.TimeoutError = exports.ServerError = exports.RateLimitError = exports.NotFoundError = exports.UnprocessableEntityError = exports.ConflictError = exports.PermissionDeniedError = exports.AuthenticationError = exports.BadRequestError = exports.HonchoError = undefined;
@@ -176,7 +176,7 @@ var require_errors = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/http/client.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/http/client.js
 var require_client = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.HonchoHTTPClient = undefined;
@@ -391,7 +391,7 @@ var require_client = __commonJS((exports) => {
   exports.HonchoHTTPClient = HonchoHTTPClient;
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/message.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/message.js
 var require_message = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Message = undefined;
@@ -418,7 +418,7 @@ var require_message = __commonJS((exports) => {
   exports.Message = Message;
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/pagination.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/pagination.js
 var require_pagination = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Page = undefined;
@@ -498,7 +498,7 @@ var require_pagination = __commonJS((exports) => {
   exports.Page = Page;
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/core.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/core.cjs
 var require_core = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.globalConfig = exports.$ZodAsyncError = exports.$brand = exports.NEVER = undefined;
@@ -566,7 +566,7 @@ var require_core = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/util.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/util.cjs
 var require_util = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Class = exports.BIGINT_FORMAT_RANGES = exports.NUMBER_FORMAT_RANGES = exports.primitiveTypes = exports.propertyKeyTypes = exports.getParsedType = exports.allowsEval = exports.captureStackTrace = undefined;
@@ -1075,7 +1075,7 @@ var require_util = __commonJS((exports) => {
   exports.Class = Class;
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/errors.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/errors.cjs
 var require_errors2 = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -1265,7 +1265,7 @@ var require_errors2 = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/parse.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/parse.cjs
 var require_parse = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -1360,7 +1360,7 @@ var require_parse = __commonJS((exports) => {
   exports.safeParseAsync = (0, exports._safeParseAsync)(errors.$ZodRealError);
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/regexes.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/regexes.cjs
 var require_regexes = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.uppercase = exports.lowercase = exports.undefined = exports.null = exports.boolean = exports.number = exports.integer = exports.bigint = exports.string = exports.date = exports.e164 = exports.domain = exports.hostname = exports.base64url = exports.base64 = exports.cidrv6 = exports.cidrv4 = exports.ipv6 = exports.ipv4 = exports.browserEmail = exports.unicodeEmail = exports.rfc5322Email = exports.html5Email = exports.email = exports.uuid7 = exports.uuid6 = exports.uuid4 = exports.uuid = exports.guid = exports.extendedDuration = exports.duration = exports.nanoid = exports.ksuid = exports.xid = exports.ulid = exports.cuid2 = exports.cuid = undefined;
@@ -1440,7 +1440,7 @@ var require_regexes = __commonJS((exports) => {
   exports.uppercase = /^[^a-z]*$/;
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/checks.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/checks.cjs
 var require_checks = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -2016,7 +2016,7 @@ var require_checks = __commonJS((exports) => {
   });
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/doc.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/doc.cjs
 var require_doc = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Doc = undefined;
@@ -2060,7 +2060,7 @@ var require_doc = __commonJS((exports) => {
   exports.Doc = Doc;
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/versions.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/versions.cjs
 var require_versions = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.version = undefined;
@@ -2071,7 +2071,7 @@ var require_versions = __commonJS((exports) => {
   };
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/schemas.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/schemas.cjs
 var require_schemas = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -3741,7 +3741,7 @@ var require_schemas = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ar.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ar.cjs
 var require_ar = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -3895,7 +3895,7 @@ var require_ar = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/az.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/az.cjs
 var require_az = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -4048,7 +4048,7 @@ var require_az = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/be.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/be.cjs
 var require_be = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -4250,7 +4250,7 @@ var require_be = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ca.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ca.cjs
 var require_ca = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -4405,7 +4405,7 @@ var require_ca = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/cs.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/cs.cjs
 var require_cs = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -4578,7 +4578,7 @@ var require_cs = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/de.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/de.cjs
 var require_de = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -4732,7 +4732,7 @@ var require_de = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/en.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/en.cjs
 var require_en = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -4889,7 +4889,7 @@ var require_en = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/eo.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/eo.cjs
 var require_eo = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -5045,7 +5045,7 @@ var require_eo = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/es.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/es.cjs
 var require_es = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -5199,7 +5199,7 @@ var require_es = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/fa.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/fa.cjs
 var require_fa = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -5359,7 +5359,7 @@ var require_fa = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/fi.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/fi.cjs
 var require_fi = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -5519,7 +5519,7 @@ var require_fi = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/fr.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/fr.cjs
 var require_fr = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -5673,7 +5673,7 @@ var require_fr = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/fr-CA.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/fr-CA.cjs
 var require_fr_CA = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -5828,7 +5828,7 @@ var require_fr_CA = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/he.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/he.cjs
 var require_he = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -5982,7 +5982,7 @@ var require_he = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/hu.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/hu.cjs
 var require_hu = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -6136,7 +6136,7 @@ var require_hu = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/id.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/id.cjs
 var require_id = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -6290,7 +6290,7 @@ var require_id = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/it.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/it.cjs
 var require_it = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -6444,7 +6444,7 @@ var require_it = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ja.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ja.cjs
 var require_ja = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -6597,7 +6597,7 @@ var require_ja = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/kh.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/kh.cjs
 var require_kh = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -6752,7 +6752,7 @@ var require_kh = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ko.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ko.cjs
 var require_ko = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -6911,7 +6911,7 @@ var require_ko = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/mk.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/mk.cjs
 var require_mk = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -7066,7 +7066,7 @@ var require_mk = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ms.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ms.cjs
 var require_ms = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -7220,7 +7220,7 @@ var require_ms = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/nl.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/nl.cjs
 var require_nl = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -7375,7 +7375,7 @@ var require_nl = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/no.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/no.cjs
 var require_no = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -7529,7 +7529,7 @@ var require_no = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ota.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ota.cjs
 var require_ota = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -7683,7 +7683,7 @@ var require_ota = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ps.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ps.cjs
 var require_ps = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -7843,7 +7843,7 @@ var require_ps = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/pl.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/pl.cjs
 var require_pl = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -7998,7 +7998,7 @@ var require_pl = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/pt.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/pt.cjs
 var require_pt = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -8152,7 +8152,7 @@ var require_pt = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ru.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ru.cjs
 var require_ru = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -8354,7 +8354,7 @@ var require_ru = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/sl.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/sl.cjs
 var require_sl = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -8509,7 +8509,7 @@ var require_sl = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/sv.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/sv.cjs
 var require_sv = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -8665,7 +8665,7 @@ var require_sv = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ta.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ta.cjs
 var require_ta = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -8820,7 +8820,7 @@ var require_ta = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/th.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/th.cjs
 var require_th = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -8975,7 +8975,7 @@ var require_th = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/tr.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/tr.cjs
 var require_tr = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -9130,7 +9130,7 @@ var require_tr = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ua.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ua.cjs
 var require_ua = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -9284,7 +9284,7 @@ var require_ua = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/ur.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/ur.cjs
 var require_ur = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -9439,7 +9439,7 @@ var require_ur = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/vi.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/vi.cjs
 var require_vi = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -9593,7 +9593,7 @@ var require_vi = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/zh-CN.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/zh-CN.cjs
 var require_zh_CN = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -9747,7 +9747,7 @@ var require_zh_CN = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/zh-TW.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/zh-TW.cjs
 var require_zh_TW = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -9902,7 +9902,7 @@ var require_zh_TW = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/locales/index.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/locales/index.cjs
 var require_locales = __commonJS((exports) => {
   var __importDefault = exports && exports.__importDefault || function(mod) {
     return mod && mod.__esModule ? mod : { default: mod };
@@ -10067,7 +10067,7 @@ var require_locales = __commonJS((exports) => {
   } });
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/registries.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/registries.cjs
 var require_registries = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.globalRegistry = exports.$ZodRegistry = exports.$input = exports.$output = undefined;
@@ -10124,7 +10124,7 @@ var require_registries = __commonJS((exports) => {
   exports.globalRegistry = registry();
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/api.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/api.cjs
 var require_api = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -11131,7 +11131,7 @@ var require_api = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/function.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/function.cjs
 var require_function = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -11244,7 +11244,7 @@ var require_function = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/to-json-schema.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/to-json-schema.cjs
 var require_to_json_schema = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.JSONSchemaGenerator = undefined;
@@ -12006,12 +12006,12 @@ var require_to_json_schema = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/json-schema.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/json-schema.cjs
 var require_json_schema = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/core/index.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/core/index.cjs
 var require_core2 = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -12069,7 +12069,7 @@ var require_core2 = __commonJS((exports) => {
   exports.JSONSchema = __importStar(require_json_schema());
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/classic/checks.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/classic/checks.cjs
 var require_checks2 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.toUpperCase = exports.toLowerCase = exports.trim = exports.normalize = exports.overwrite = exports.mime = exports.property = exports.endsWith = exports.startsWith = exports.includes = exports.uppercase = exports.lowercase = exports.regex = exports.length = exports.minLength = exports.maxLength = exports.size = exports.minSize = exports.maxSize = exports.multipleOf = exports.nonnegative = exports.nonpositive = exports.negative = exports.positive = exports.gte = exports.gt = exports.lte = exports.lt = undefined;
@@ -12160,7 +12160,7 @@ var require_checks2 = __commonJS((exports) => {
   } });
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/classic/iso.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/classic/iso.cjs
 var require_iso = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -12232,7 +12232,7 @@ var require_iso = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/classic/errors.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/classic/errors.cjs
 var require_errors3 = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -12299,7 +12299,7 @@ var require_errors3 = __commonJS((exports) => {
   });
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/classic/parse.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/classic/parse.cjs
 var require_parse2 = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -12343,7 +12343,7 @@ var require_parse2 = __commonJS((exports) => {
   exports.safeParseAsync = core._safeParseAsync(errors_js_1.ZodRealError);
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/classic/schemas.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/classic/schemas.cjs
 var require_schemas2 = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -13399,7 +13399,7 @@ var require_schemas2 = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/classic/compat.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/classic/compat.cjs
 var require_compat = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -13468,7 +13468,7 @@ var require_compat = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/classic/coerce.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/classic/coerce.cjs
 var require_coerce = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -13527,7 +13527,7 @@ var require_coerce = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/v4/classic/external.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/v4/classic/external.cjs
 var require_external = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -13647,7 +13647,7 @@ var require_external = __commonJS((exports) => {
   exports.coerce = __importStar(require_coerce());
 });
 
-// ../../node_modules/.bun/zod@4.0.0/node_modules/zod/index.cjs
+// ../../node_modules/.pnpm/zod@4.0.0/node_modules/zod/index.cjs
 var require_zod = __commonJS((exports) => {
   var __createBinding = exports && exports.__createBinding || (Object.create ? function(o, m, k, k2) {
     if (k2 === undefined)
@@ -13694,7 +13694,7 @@ var require_zod = __commonJS((exports) => {
   exports.default = z;
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/validation.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/validation.js
 var require_validation = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.ConclusionQueryParamsSchema = exports.LimitSchema = exports.WorkspaceConfigSchema = exports.WorkspaceMetadataSchema = exports.MessageAdditionToApiSchema = exports.MessageAdditionSchema = exports.PeerRemovalSchema = exports.PeerAdditionToApiSchema = exports.PeerAdditionSchema = exports.PeerCardContentSchema = exports.CardTargetSchema = exports.PeerGetRepresentationParamsSchema = exports.GetRepresentationParamsSchema = exports.FileUploadSchema = exports.QueueStatusOptionsSchema = exports.ContextParamsSchema = exports.RepresentationOptionsSchema = exports.ChatQuerySchema = exports.FilterSchema = exports.SearchQueryLikeSchema = exports.SearchQueryObjectSchema = exports.SearchQuerySchema = exports.MessageInputSchema = exports.MessageConfigurationSchema = exports.MessageMetadataSchema = exports.MessageContentSchema = exports.SessionPeerConfigSchema = exports.SessionIdSchema = exports.SessionConfigSchema = exports.DreamConfigSchema = exports.SummaryConfigSchema = exports.PeerCardConfigSchema = exports.ReasoningConfigSchema = exports.SessionMetadataSchema = exports.PeerIdSchema = exports.PeerConfigSchema = exports.PeerMetadataSchema = exports.HonchoConfigSchema = exports.WorkspaceIdSchema = undefined;
@@ -14102,7 +14102,7 @@ var require_validation = __commonJS((exports) => {
   }).strict();
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/conclusions.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/conclusions.js
 var require_conclusions = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.ConclusionScope = exports.Conclusion = undefined;
@@ -14240,7 +14240,7 @@ var require_conclusions = __commonJS((exports) => {
   exports.ConclusionScope = ConclusionScope;
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/http/streaming.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/http/streaming.js
 var require_streaming = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.DialecticStreamResponse = undefined;
@@ -14338,7 +14338,7 @@ var require_streaming = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/session_context.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/session_context.js
 var require_session_context = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.SessionContext = exports.SessionSummaries = exports.Summary = undefined;
@@ -14458,7 +14458,7 @@ var require_session_context = __commonJS((exports) => {
   exports.SessionContext = SessionContext;
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/utils.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/utils.js
 var require_utils = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.resolveId = resolveId;
@@ -14490,7 +14490,7 @@ var require_utils = __commonJS((exports) => {
   }
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/session.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/session.js
 var require_session = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Session = undefined;
@@ -14875,7 +14875,7 @@ var require_session = __commonJS((exports) => {
   exports.Session = Session;
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/peer.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/peer.js
 var require_peer = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Peer = exports.PeerContext = undefined;
@@ -15171,7 +15171,7 @@ var require_peer = __commonJS((exports) => {
   exports.Peer = Peer;
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/client.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/client.js
 var require_client2 = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Honcho = undefined;
@@ -15482,7 +15482,7 @@ var require_client2 = __commonJS((exports) => {
   exports.Honcho = Honcho;
 });
 
-// ../../node_modules/.bun/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/index.js
+// ../../node_modules/.pnpm/@honcho-ai+sdk@2.1.1/node_modules/@honcho-ai/sdk/dist/index.js
 var require_dist = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Summary = exports.SessionSummaries = exports.SessionContext = exports.Session = exports.PeerContext = exports.Peer = exports.Page = exports.Message = exports.DialecticStreamResponse = exports.UnprocessableEntityError = exports.TimeoutError = exports.ServerError = exports.RateLimitError = exports.PermissionDeniedError = exports.NotFoundError = exports.HonchoError = exports.ConnectionError = exports.ConflictError = exports.BadRequestError = exports.AuthenticationError = exports.ConclusionScope = exports.Conclusion = exports.Honcho = undefined;
