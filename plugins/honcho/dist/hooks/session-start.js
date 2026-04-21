@@ -17284,7 +17284,7 @@ async function handleSessionStart() {
     logApiCall("honcho.session/peer", "GET", `session + 2 peers`, Date.now() - startTime, true);
     setCachedSessionId(cwd, sessionName, session.id, claudeInstanceId);
     const observationMode = getObservationMode(config);
-    const peers = observationMode === "directional" ? [userPeer, [aiPeer, { observeOthers: true }]] : [userPeer, aiPeer];
+    const peers = observationMode === "directional" ? [userPeer, [aiPeer, { observeMe: false, observeOthers: true }]] : [userPeer, [aiPeer, { observeMe: false }]];
     await session.addPeers(peers);
     if (!getSessionForPath(cwd) && (!config.sessionStrategy || config.sessionStrategy === "per-directory")) {
       setSessionForPath(cwd, sessionName);

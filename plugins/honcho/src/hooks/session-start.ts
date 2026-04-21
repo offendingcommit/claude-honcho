@@ -106,13 +106,13 @@ export async function handleSessionStart(): Promise<void> {
     setCachedSessionId(cwd, sessionName, session.id, claudeInstanceId);
 
     // Step 4: Add peers to session (materializes session server-side).
-    // Peer defaults (observeMe, observeOthers) are managed server-side —
-    // configure them via API or on app.honcho.dev. We only override observeOthers
-    // for the AI peer in directional mode so it can observe the user.
+    // Always suppress claude's self-observation (observeMe: false) to avoid
+    // tool call noise polluting conclusions. In directional mode, claude also
+    // observes the user so the deriver builds jonathan-focused insights.
     const observationMode = getObservationMode(config);
     const peers: Parameters<typeof session.addPeers>[0] = observationMode === "directional"
-      ? [userPeer, [aiPeer, { observeOthers: true }]]
-      : [userPeer, aiPeer];
+      ? [userPeer, [aiPeer, { observeMe: false, observeOthers: true }]]
+      : [userPeer, [aiPeer, { observeMe: false }]];
     await session.addPeers(peers);
 
     // Only persist session names for per-directory strategy (stable names).
