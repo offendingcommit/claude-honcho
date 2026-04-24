@@ -1,5 +1,6 @@
 ---
 description: Semantic search over saved Honcho conclusions about the user — answers "what do you remember about X?"
+when_to_use: Use when the user asks "what do you remember about X?", "what have I told you about my preferences for Y?", "look up what you know about Z", or "find anything you know about my workflow".
 allowed-tools: query_conclusions
 user-invocable: true
 ---

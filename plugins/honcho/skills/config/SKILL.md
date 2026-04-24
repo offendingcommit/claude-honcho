@@ -1,6 +1,7 @@
 ---
 description: Configure Honcho memory plugin settings interactively
 allowed-tools: get_config, set_config
+disable-model-invocation: true
 user-invocable: true
 ---
 

@@ -1,6 +1,7 @@
 ---
 description: Audit Honcho conclusions for staleness, duplicates, and low-signal entries. Use when memory surfaced via UserPromptSubmit feels noisy, contradictory, or outdated, or on a quarterly cadence to keep signal-to-noise high.
 allowed-tools: get_config, chat, query_conclusions, list_conclusions, delete_conclusion, create_conclusion
+disable-model-invocation: true
 user-invocable: true
 ---
 

@@ -1,6 +1,7 @@
 ---
 description: Trigger Honcho's background memory consolidation (a "dream") to merge redundant conclusions and derive higher-level insights
 allowed-tools: schedule_dream
+disable-model-invocation: true
 user-invocable: true
 ---
 

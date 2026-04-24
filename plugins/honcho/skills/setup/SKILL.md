@@ -1,5 +1,6 @@
 ---
 description: First-time Honcho configuration -- set API key, validate connection, create config
+disable-model-invocation: true
 user-invocable: true
 ---
 

@@ -1,5 +1,6 @@
 ---
 description: Show current Honcho memory status and configuration
+when_to_use: Use when the user asks "is honcho working?", "how many conclusions do I have?", "check my memory system", "is my memory connected?", or wants to verify the plugin is active.
 user-invocable: true
 ---
 

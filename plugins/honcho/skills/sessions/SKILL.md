@@ -1,5 +1,6 @@
 ---
 description: List past Honcho sessions across all projects — answers "what was I working on yesterday?"
+when_to_use: Use when the user asks "what was I working on yesterday?", "show my recent sessions", "what have I been working on lately?", or "show me my Claude history".
 allowed-tools: list_sessions, search
 user-invocable: true
 ---
