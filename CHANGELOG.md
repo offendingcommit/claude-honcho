@@ -1,3 +1,14 @@
+## [1.5.0](https://github.com/offendingcommit/claude-honcho/compare/v1.4.0-oc...v1.5.0-oc) (2026-04-24)
+
+### Features
+
+* **honcho:** add /honcho:audit skill for periodic conclusion pruning ([2cf37ee](https://github.com/offendingcommit/claude-honcho/commit/2cf37eec96680b443ec332a8b1a307458f94e24e))
+* **honcho:** apply disable-model-invocation and when_to_use to skills ([264e635](https://github.com/offendingcommit/claude-honcho/commit/264e63550cdea9a243e43687b5e015448ef56f6f))
+
+### Bug Fixes
+
+* **honcho:** suppress claude self-observation to eliminate tool call noise ([3d403cb](https://github.com/offendingcommit/claude-honcho/commit/3d403cb4d719d101d3f2a088c49d2c86d23c8de2))
+
 ## [1.4.0](https://github.com/offendingcommit/claude-honcho/compare/v1.3.0-oc...v1.4.0-oc) (2026-04-21)
 
 ### Features
