@@ -1,5 +1,6 @@
 ---
 description: Semantic search over saved Honcho conclusions about the user — answers "what do you remember about X?"
+allowed-tools: query_conclusions
 user-invocable: true
 ---
 

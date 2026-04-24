@@ -1,5 +1,6 @@
 ---
 description: List past Honcho sessions across all projects — answers "what was I working on yesterday?"
+allowed-tools: list_sessions, search
 user-invocable: true
 ---
 
