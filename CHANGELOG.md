@@ -1,3 +1,9 @@
+## [1.6.0](https://github.com/offendingcommit/claude-honcho/compare/v1.5.0-oc...v1.6.0-oc) (2026-04-30)
+
+### Features
+
+* add self conclusions ([ba794ee](https://github.com/offendingcommit/claude-honcho/commit/ba794ee110559cb2c8e89bbe2534d31c748fbc43))
+
 ## [1.5.0](https://github.com/offendingcommit/claude-honcho/compare/v1.4.0-oc...v1.5.0-oc) (2026-04-24)
 
 ### Features
