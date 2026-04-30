@@ -2,6 +2,7 @@ import { Honcho } from "@honcho-ai/sdk";
 import { loadConfig, getSessionName, getHonchoClientOptions, isPluginEnabled, getCachedStdin, getObservationMode } from "../config.js";
 import {
   getCachedUserContext,
+  getCachedClaudeContext,
   getStaleCachedUserContext,
   isContextCacheStale,
   setCachedUserContext,
@@ -193,10 +194,27 @@ function serveContext(
   sessionLink?: string,
 ): void {
   const { parts: contextParts } = formatCachedContext(context, peerName);
+  // Self-notes are sparse and bounded — read from cache, append top 3 if any.
+  const selfPart = formatSelfNotes(getCachedClaudeContext());
+  if (selfPart) contextParts.push(selfPart);
   if (contextParts.length === 0) return;
 
   const visMsg = visContextLine("user-prompt", { cached });
   outputContext(peerName, contextParts, sessionLink ? `${sessionLink}\n${visMsg}` : visMsg);
+}
+
+const SELF_NOTES_MAX = 3;
+
+function formatSelfNotes(claudeContext: any): string | null {
+  const rep = claudeContext?.representation;
+  if (typeof rep !== "string" || !rep.trim()) return null;
+  const lines = rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#"));
+  if (lines.length === 0) return null;
+  const summary = lines
+    .slice(0, SELF_NOTES_MAX)
+    .map((l: string) => l.replace(/^\[.*?\]\s*/, "").replace(/^- /, ""))
+    .join("; ");
+  return summary ? `Claude self-notes: ${summary}` : null;
 }
 
 async function fetchFreshContext(config: any, prompt: string): Promise<{ context: any }> {
