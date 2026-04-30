@@ -5,43 +5,25 @@ var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-function __accessProp(key) {
-  return this[key];
-}
-var __toESMCache_node;
-var __toESMCache_esm;
 var __toESM = (mod, isNodeMode, target) => {
-  var canCache = mod != null && typeof mod === "object";
-  if (canCache) {
-    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
-    var cached = cache.get(mod);
-    if (cached)
-      return cached;
-  }
   target = mod != null ? __create(__getProtoOf(mod)) : {};
   const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
   for (let key of __getOwnPropNames(mod))
     if (!__hasOwnProp.call(to, key))
       __defProp(to, key, {
-        get: __accessProp.bind(mod, key),
+        get: () => mod[key],
         enumerable: true
       });
-  if (canCache)
-    cache.set(mod, to);
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
-var __returnValue = (v) => v;
-function __exportSetter(name, newValue) {
-  this[name] = __returnValue.bind(null, newValue);
-}
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, {
       get: all[name],
       enumerable: true,
       configurable: true,
-      set: __exportSetter.bind(all, name)
+      set: (newValue) => all[name] = () => newValue
     });
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
@@ -319,6 +301,18 @@ function getStaleCachedUserContext() {
 function setCachedUserContext(data) {
   const cache = loadContextCache();
   cache.userContext = { data, fetchedAt: Date.now() };
+  saveContextCache(cache);
+}
+function getCachedClaudeContext() {
+  const cache = loadContextCache();
+  if (cache.claudeContext && Date.now() - cache.claudeContext.fetchedAt < getContextTTL()) {
+    return cache.claudeContext.data;
+  }
+  return null;
+}
+function setCachedClaudeContext(data) {
+  const cache = loadContextCache();
+  cache.claudeContext = { data, fetchedAt: Date.now() };
   saveContextCache(cache);
 }
 function isContextCacheStale() {
@@ -17060,11 +17054,26 @@ async function handleUserPrompt() {
 }
 function serveContext(peerName, context, cached, sessionLink) {
   const { parts: contextParts } = formatCachedContext(context, peerName);
+  const selfPart = formatSelfNotes(getCachedClaudeContext());
+  if (selfPart)
+    contextParts.push(selfPart);
   if (contextParts.length === 0)
     return;
   const visMsg = visContextLine("user-prompt", { cached });
   outputContext(peerName, contextParts, sessionLink ? `${sessionLink}
 ${visMsg}` : visMsg);
+}
+var SELF_NOTES_MAX = 3;
+function formatSelfNotes(claudeContext) {
+  const rep = claudeContext?.representation;
+  if (typeof rep !== "string" || !rep.trim())
+    return null;
+  const lines = rep.split(`
+`).filter((l) => l.trim() && !l.startsWith("#"));
+  if (lines.length === 0)
+    return null;
+  const summary = lines.slice(0, SELF_NOTES_MAX).map((l) => l.replace(/^\[.*?\]\s*/, "").replace(/^- /, "")).join("; ");
+  return summary ? `Claude self-notes: ${summary}` : null;
 }
 async function fetchFreshContext(config, prompt) {
   const honcho = new import_sdk.Honcho(getHonchoClientOptions(config));
