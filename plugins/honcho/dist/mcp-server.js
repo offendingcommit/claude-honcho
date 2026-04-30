@@ -5,43 +5,25 @@ var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-function __accessProp(key) {
-  return this[key];
-}
-var __toESMCache_node;
-var __toESMCache_esm;
 var __toESM = (mod, isNodeMode, target) => {
-  var canCache = mod != null && typeof mod === "object";
-  if (canCache) {
-    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
-    var cached = cache.get(mod);
-    if (cached)
-      return cached;
-  }
   target = mod != null ? __create(__getProtoOf(mod)) : {};
   const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
   for (let key of __getOwnPropNames(mod))
     if (!__hasOwnProp.call(to, key))
       __defProp(to, key, {
-        get: __accessProp.bind(mod, key),
+        get: () => mod[key],
         enumerable: true
       });
-  if (canCache)
-    cache.set(mod, to);
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
-var __returnValue = (v) => v;
-function __exportSetter(name, newValue) {
-  this[name] = __returnValue.bind(null, newValue);
-}
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, {
       get: all[name],
       enumerable: true,
       configurable: true,
-      set: __exportSetter.bind(all, name)
+      set: (newValue) => all[name] = () => newValue
     });
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
@@ -22312,6 +22294,18 @@ function setCachedUserContext(data) {
   cache.userContext = { data, fetchedAt: Date.now() };
   saveContextCache(cache);
 }
+function getCachedClaudeContext() {
+  const cache = loadContextCache();
+  if (cache.claudeContext && Date.now() - cache.claudeContext.fetchedAt < getContextTTL()) {
+    return cache.claudeContext.data;
+  }
+  return null;
+}
+function setCachedClaudeContext(data) {
+  const cache = loadContextCache();
+  cache.claudeContext = { data, fetchedAt: Date.now() };
+  saveContextCache(cache);
+}
 function isContextCacheStale() {
   const cache = loadContextCache();
   if (!cache.userContext)
@@ -29202,6 +29196,8 @@ var ENV_SHADOW_MAP = {
   "endpoint.baseUrl": "HONCHO_ENDPOINT",
   "endpoint.environment": "HONCHO_ENDPOINT"
 };
+var OBSERVED_USER = "user";
+var OBSERVED_SELF = "self";
 var DANGEROUS_FIELDS = new Set(["workspace", "endpoint.environment", "endpoint.baseUrl"]);
 var SESSION_AFFECTING_FIELDS = new Set([
   "workspace",
@@ -29645,13 +29641,19 @@ async function runMcpServer() {
         },
         {
           name: "create_conclusion",
-          description: "Save a key insight or biographical detail about the user to Honcho's memory",
+          description: `Save a key insight to Honcho's memory. Default target is the user (durable facts/preferences/instructions/traits about them). Set observed='self' to save a self-conclusion about the AI peer \u2014 use ONLY for: (1) recurring failure patterns in your own reasoning you want future-you to course-correct, (2) explicit instructions the user gave you to change your behavior, (3) negative decisions ('don't reach for X'). NEVER write self-flattery or one-off mistakes. Bar: would future-me make materially better decisions reading this on session-start? Test before any write: complete "the user/Claude ___" \u2014 if not durable and about that peer, don't write.`,
           inputSchema: {
             type: "object",
             properties: {
               content: {
                 type: "string",
                 description: "The insight or fact to remember"
+              },
+              observed: {
+                type: "string",
+                enum: [OBSERVED_USER, OBSERVED_SELF],
+                description: "'user' (default) saves a conclusion about the user. 'self' saves a conclusion about the AI peer (Claude) \u2014 use sparingly, only for course-correcting self-observations.",
+                default: OBSERVED_USER
               }
             },
             required: ["content"]
@@ -29884,7 +29886,7 @@ async function runMcpServer() {
         },
         {
           name: "create_conclusions",
-          description: "Save multiple conclusions about the user in a single call. Prefer this over calling create_conclusion repeatedly.",
+          description: "Save multiple conclusions in a single call. Prefer this over calling create_conclusion repeatedly. Default target is the user. Set observed='self' to save self-conclusions about the AI peer \u2014 same strict bar as create_conclusion: only durable course-correcting self-observations, never self-flattery.",
           inputSchema: {
             type: "object",
             properties: {
@@ -29892,6 +29894,12 @@ async function runMcpServer() {
                 type: "array",
                 items: { type: "string" },
                 description: "Array of insight strings to save as conclusions."
+              },
+              observed: {
+                type: "string",
+                enum: [OBSERVED_USER, OBSERVED_SELF],
+                description: "'user' (default) saves conclusions about the user. 'self' saves conclusions about the AI peer (Claude).",
+                default: OBSERVED_USER
               }
             },
             required: ["contents"]
@@ -30080,12 +30088,16 @@ async function runMcpServer() {
             isError: true
           };
         }
+        const observed = args?.observed ?? OBSERVED_USER;
         const observationMode = getObservationMode(config2);
-        const scopePeer = observationMode === "unified" ? await honcho.peer(config2.peerName) : await honcho.peer(config2.aiPeer);
-        const conclusionScope = scopePeer.conclusionsOf(config2.peerName);
+        const { scopePeer, observedPeerName } = observed === OBSERVED_SELF ? { scopePeer: await honcho.peer(config2.aiPeer), observedPeerName: config2.aiPeer } : {
+          scopePeer: await honcho.peer(observationMode === "unified" ? config2.peerName : config2.aiPeer),
+          observedPeerName: config2.peerName
+        };
+        const conclusionScope = scopePeer.conclusionsOf(observedPeerName);
         const created = await conclusionScope.create(contents.map((content) => ({ content })));
         return {
-          content: [{ type: "text", text: JSON.stringify({ success: true, created: created.length }) }]
+          content: [{ type: "text", text: JSON.stringify({ success: true, created: created.length, observed }) }]
         };
       } catch (error3) {
         return {
@@ -30175,7 +30187,9 @@ async function runMcpServer() {
         }
         case "create_conclusion": {
           const content = args?.content;
-          const conclusions = await activePeer.conclusionsOf(config2.peerName).create({
+          const observed = args?.observed ?? OBSERVED_USER;
+          const { writePeer, observedPeerName } = observed === OBSERVED_SELF ? { writePeer: aiPeer ?? await honcho.peer(config2.aiPeer), observedPeerName: config2.aiPeer } : { writePeer: activePeer, observedPeerName: config2.peerName };
+          const conclusions = await writePeer.conclusionsOf(observedPeerName).create({
             content,
             sessionId: session.id
           });
@@ -30183,7 +30197,7 @@ async function runMcpServer() {
             content: [
               {
                 type: "text",
-                text: `Saved conclusion: ${conclusions[0]?.content || content}`
+                text: `Saved ${observed === OBSERVED_SELF ? "self-" : ""}conclusion: ${conclusions[0]?.content || content}`
               }
             ]
           };

@@ -5,43 +5,25 @@ var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-function __accessProp(key) {
-  return this[key];
-}
-var __toESMCache_node;
-var __toESMCache_esm;
 var __toESM = (mod, isNodeMode, target) => {
-  var canCache = mod != null && typeof mod === "object";
-  if (canCache) {
-    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
-    var cached = cache.get(mod);
-    if (cached)
-      return cached;
-  }
   target = mod != null ? __create(__getProtoOf(mod)) : {};
   const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
   for (let key of __getOwnPropNames(mod))
     if (!__hasOwnProp.call(to, key))
       __defProp(to, key, {
-        get: __accessProp.bind(mod, key),
+        get: () => mod[key],
         enumerable: true
       });
-  if (canCache)
-    cache.set(mod, to);
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
-var __returnValue = (v) => v;
-function __exportSetter(name, newValue) {
-  this[name] = __returnValue.bind(null, newValue);
-}
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, {
       get: all[name],
       enumerable: true,
       configurable: true,
-      set: __exportSetter.bind(all, name)
+      set: (newValue) => all[name] = () => newValue
     });
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
@@ -319,6 +301,18 @@ function getStaleCachedUserContext() {
 function setCachedUserContext(data) {
   const cache = loadContextCache();
   cache.userContext = { data, fetchedAt: Date.now() };
+  saveContextCache(cache);
+}
+function getCachedClaudeContext() {
+  const cache = loadContextCache();
+  if (cache.claudeContext && Date.now() - cache.claudeContext.fetchedAt < getContextTTL()) {
+    return cache.claudeContext.data;
+  }
+  return null;
+}
+function setCachedClaudeContext(data) {
+  const cache = loadContextCache();
+  cache.claudeContext = { data, fetchedAt: Date.now() };
   saveContextCache(cache);
 }
 function isContextCacheStale() {
@@ -17310,8 +17304,9 @@ async function handleSessionStart() {
     const fetchStart = Date.now();
     const dialecticLevel = config.reasoningLevel ?? "low";
     const contextLabel = observationMode === "unified" ? "userPeer.context()" : "aiPeer.context(target=user)";
-    const [userContextResult] = await Promise.allSettled([
-      observationMode === "unified" ? userPeer.context({ maxConclusions: 25, includeMostFrequent: true }) : aiPeer.context({ target: config.peerName, maxConclusions: 25, includeMostFrequent: true })
+    const [userContextResult, claudeContextResult] = await Promise.allSettled([
+      observationMode === "unified" ? userPeer.context({ maxConclusions: 25, includeMostFrequent: true }) : aiPeer.context({ target: config.peerName, maxConclusions: 25, includeMostFrequent: true }),
+      aiPeer.context({ target: config.aiPeer, maxConclusions: 10, includeMostFrequent: false })
     ]);
     if (observationMode === "unified") {
       userPeer.chat(`Summarize what you know about ${config.peerName}. Focus on preferences, current projects, and working style.${branchContext}${featureHint}`, { session, reasoningLevel: dialecticLevel }).catch((e) => logHook("session-start", `Dialectic (user) failed: ${e}`));
@@ -17322,10 +17317,11 @@ async function handleSessionStart() {
     }
     const fetchDuration = Date.now() - fetchStart;
     const asyncResults = [
-      { name: contextLabel, success: userContextResult.status === "fulfilled" }
+      { name: contextLabel, success: userContextResult.status === "fulfilled" },
+      { name: "aiPeer.context(target=self)", success: claudeContextResult.status === "fulfilled" }
     ];
     const successCount = asyncResults.filter((r) => r.success).length;
-    logAsync("context-fetch", `Context: ${successCount}/1 succeeded in ${fetchDuration}ms (dialectic fire-and-forget)`, asyncResults);
+    logAsync("context-fetch", `Context: ${successCount}/2 succeeded in ${fetchDuration}ms (dialectic fire-and-forget)`, asyncResults);
     if (userContextResult.status === "fulfilled" && userContextResult.value) {
       const ctx = userContextResult.value;
       verboseApiResult(`${contextLabel} \u2192 representation`, ctx.representation);
@@ -17338,6 +17334,14 @@ async function handleSessionStart() {
       const count = typeof rep === "string" ? rep.split(`
 `).filter((l) => l.trim() && !l.startsWith("#")).length : 0;
       logCache("write", "userContext", `${count} conclusions`);
+    }
+    if (claudeContextResult.status === "fulfilled" && claudeContextResult.value) {
+      const selfCtx = claudeContextResult.value;
+      setCachedClaudeContext(selfCtx);
+      const rep = selfCtx.representation;
+      const count = typeof rep === "string" ? rep.split(`
+`).filter((l) => l.trim() && !l.startsWith("#")).length : 0;
+      logCache("write", "claudeContext", `${count} self-conclusions`);
     }
     spinner.stop();
     logFlow("complete", `Cache warmed: ${successCount}/1 context + 2 dialectic (fire-and-forget)`);

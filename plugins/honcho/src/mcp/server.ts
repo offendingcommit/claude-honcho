@@ -49,6 +49,12 @@ const ENV_SHADOW_MAP: Record<string, string> = {
   "endpoint.environment": "HONCHO_ENDPOINT",
 };
 
+// Conclusion observation targets — `user` writes about jonathan; `self` writes
+// about the AI peer (Claude observing itself for course-correction).
+const OBSERVED_USER = "user" as const;
+const OBSERVED_SELF = "self" as const;
+type ObservedTarget = typeof OBSERVED_USER | typeof OBSERVED_SELF;
+
 // Fields that require confirm=true to change
 const DANGEROUS_FIELDS = new Set(["workspace", "endpoint.environment", "endpoint.baseUrl"]);
 
@@ -580,13 +586,19 @@ export async function runMcpServer(): Promise<void> {
         },
         {
           name: "create_conclusion",
-          description: "Save a key insight or biographical detail about the user to Honcho's memory",
+          description: "Save a key insight to Honcho's memory. Default target is the user (durable facts/preferences/instructions/traits about them). Set observed='self' to save a self-conclusion about the AI peer — use ONLY for: (1) recurring failure patterns in your own reasoning you want future-you to course-correct, (2) explicit instructions the user gave you to change your behavior, (3) negative decisions ('don't reach for X'). NEVER write self-flattery or one-off mistakes. Bar: would future-me make materially better decisions reading this on session-start? Test before any write: complete \"the user/Claude ___\" — if not durable and about that peer, don't write.",
           inputSchema: {
             type: "object",
             properties: {
               content: {
                 type: "string",
                 description: "The insight or fact to remember",
+              },
+              observed: {
+                type: "string",
+                enum: [OBSERVED_USER, OBSERVED_SELF],
+                description: "'user' (default) saves a conclusion about the user. 'self' saves a conclusion about the AI peer (Claude) — use sparingly, only for course-correcting self-observations.",
+                default: OBSERVED_USER,
               },
             },
             required: ["content"],
@@ -819,7 +831,7 @@ export async function runMcpServer(): Promise<void> {
         },
         {
           name: "create_conclusions",
-          description: "Save multiple conclusions about the user in a single call. Prefer this over calling create_conclusion repeatedly.",
+          description: "Save multiple conclusions in a single call. Prefer this over calling create_conclusion repeatedly. Default target is the user. Set observed='self' to save self-conclusions about the AI peer — same strict bar as create_conclusion: only durable course-correcting self-observations, never self-flattery.",
           inputSchema: {
             type: "object",
             properties: {
@@ -827,6 +839,12 @@ export async function runMcpServer(): Promise<void> {
                 type: "array",
                 items: { type: "string" },
                 description: "Array of insight strings to save as conclusions.",
+              },
+              observed: {
+                type: "string",
+                enum: [OBSERVED_USER, OBSERVED_SELF],
+                description: "'user' (default) saves conclusions about the user. 'self' saves conclusions about the AI peer (Claude).",
+                default: OBSERVED_USER,
               },
             },
             required: ["contents"],
@@ -1037,16 +1055,22 @@ export async function runMcpServer(): Promise<void> {
             isError: true,
           };
         }
+        const observed: ObservedTarget = (args?.observed as ObservedTarget) ?? OBSERVED_USER;
+        // Self-conclusions: aiPeer observes itself, regardless of observation mode.
+        // User-conclusions: routed by observation mode (unified=user→user, directional=ai→user).
         const observationMode = getObservationMode(config);
-        const scopePeer = observationMode === "unified"
-          ? await honcho.peer(config.peerName)
-          : await honcho.peer(config.aiPeer);
-        const conclusionScope = scopePeer.conclusionsOf(config.peerName);
+        const { scopePeer, observedPeerName } = observed === OBSERVED_SELF
+          ? { scopePeer: await honcho.peer(config.aiPeer), observedPeerName: config.aiPeer }
+          : {
+              scopePeer: await honcho.peer(observationMode === "unified" ? config.peerName : config.aiPeer),
+              observedPeerName: config.peerName,
+            };
+        const conclusionScope = scopePeer.conclusionsOf(observedPeerName);
         const created = await conclusionScope.create(
           contents.map((content) => ({ content }))
         );
         return {
-          content: [{ type: "text", text: JSON.stringify({ success: true, created: created.length }) }],
+          content: [{ type: "text", text: JSON.stringify({ success: true, created: created.length, observed }) }],
         };
       } catch (error) {
         return {
@@ -1160,8 +1184,15 @@ export async function runMcpServer(): Promise<void> {
 
         case "create_conclusion": {
           const content = args?.content as string;
+          const observed: ObservedTarget = (args?.observed as ObservedTarget) ?? OBSERVED_USER;
 
-          const conclusions = await activePeer.conclusionsOf(config.peerName).create({
+          // Self-conclusions: aiPeer observes itself. User-conclusions: existing
+          // observation-mode routing (activePeer.conclusionsOf(userPeerName)).
+          const { writePeer, observedPeerName } = observed === OBSERVED_SELF
+            ? { writePeer: aiPeer ?? await honcho.peer(config.aiPeer), observedPeerName: config.aiPeer }
+            : { writePeer: activePeer, observedPeerName: config.peerName };
+
+          const conclusions = await writePeer.conclusionsOf(observedPeerName).create({
             content,
             sessionId: session.id,
           });
@@ -1170,7 +1201,7 @@ export async function runMcpServer(): Promise<void> {
             content: [
               {
                 type: "text",
-                text: `Saved conclusion: ${conclusions[0]?.content || content}`,
+                text: `Saved ${observed === OBSERVED_SELF ? "self-" : ""}conclusion: ${conclusions[0]?.content || content}`,
               },
             ],
           };
