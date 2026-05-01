@@ -18,11 +18,23 @@ export function isGitRepo(cwd: string): boolean {
 }
 
 /**
- * Run a git command and return the output, or null if it fails
+ * Hard timeout for git subprocess calls. Without this a stuck NFS-mounted
+ * .git or a wedged credential helper freezes Claude Code's hook chain
+ * indefinitely (every hook calls captureGitState).
  */
-function gitCommand(cwd: string, args: string): string | null {
+const GIT_TIMEOUT_MS = 1500;
+
+/**
+ * Run a git command and return the output, or null if it fails or times out.
+ */
+export function gitCommand(cwd: string, args: string): string | null {
   try {
-    return execSync(`git ${args}`, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    return execSync(`git ${args}`, {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: GIT_TIMEOUT_MS,
+    }).trim();
   } catch {
     return null;
   }
