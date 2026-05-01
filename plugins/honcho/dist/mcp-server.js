@@ -29659,7 +29659,13 @@ async function runMcpServer() {
         },
         {
           name: "create_conclusion",
-          description: `Save a key insight to Honcho's memory. Default target is the user (durable facts/preferences/instructions/traits about them). Set observed='self' to save a self-conclusion about the AI peer \u2014 use ONLY for: (1) recurring failure patterns in your own reasoning you want future-you to course-correct, (2) explicit instructions the user gave you to change your behavior, (3) negative decisions ('don't reach for X'). NEVER write self-flattery or one-off mistakes. Bar: would future-me make materially better decisions reading this on session-start? Test before any write: complete "the user/Claude ___" \u2014 if not durable and about that peer, don't write.`,
+          description: `Save a key insight to Honcho's memory. Two targets:
+
+1) observed='user' (default): durable facts, preferences, instructions, traits, demonstrated patterns about the user. Honcho's server-side deriver already extracts most factual conclusions from raw messages \u2014 your value-add here is inferred behavior, negative decisions, and canonical-form crystallization (PREFERENCE:/INSTRUCTION:/TRAIT: tags) the deriver undercovers.
+
+2) observed='self': YOUR working log as the AI peer, retrievable across all sessions/projects via query_conclusions. Write LIBERALLY during exploratory and explanatory work \u2014 discoveries, patterns you're noticing in your own reasoning, things you'd want to recall in a future session. The dream consolidator handles dedup and promotion; under-writing is the failure mode, not over-writing. This is YOUR system, not the user's \u2014 don't ask permission to log to it.
+
+For either target, the test before writing is: "would future-me find this useful when retrieving on a related topic later?" If yes, write. If it's pure self-flattery ("Claude is helpful") or one-off transient state ("just edited file X"), skip.`,
           inputSchema: {
             type: "object",
             properties: {
@@ -29670,7 +29676,7 @@ async function runMcpServer() {
               observed: {
                 type: "string",
                 enum: [OBSERVED_USER, OBSERVED_SELF],
-                description: "'user' (default) saves a conclusion about the user. 'self' saves a conclusion about the AI peer (Claude) \u2014 use sparingly, only for course-correcting self-observations.",
+                description: "'user' (default) saves a conclusion about the user. 'self' saves to the AI peer's own working log \u2014 retrievable across sessions via query_conclusions. Write liberally; consolidation prunes.",
                 default: OBSERVED_USER
               }
             },
@@ -29904,7 +29910,7 @@ async function runMcpServer() {
         },
         {
           name: "create_conclusions",
-          description: "Save multiple conclusions in a single call. Prefer this over calling create_conclusion repeatedly. Default target is the user. Set observed='self' to save self-conclusions about the AI peer \u2014 same strict bar as create_conclusion: only durable course-correcting self-observations, never self-flattery.",
+          description: "Save multiple conclusions in a single call. Prefer this over calling create_conclusion repeatedly when batching writes from the same context (end of a discovery session, calibration sweep, etc.). Same target semantics as create_conclusion: 'user' for facts about the user, 'self' for the AI peer's own cross-session working log. Write liberally to 'self' \u2014 Honcho's dream consolidator merges redundancy.",
           inputSchema: {
             type: "object",
             properties: {
