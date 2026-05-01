@@ -22047,7 +22047,12 @@ function isGitRepo(cwd) {
 }
 function gitCommand(cwd, args) {
   try {
-    return execSync(`git ${args}`, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    return execSync(`git ${args}`, {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: GIT_TIMEOUT_MS
+    }).trim();
   } catch {
     return null;
   }
@@ -22170,7 +22175,7 @@ function inferFeatureContext(gitState, recentCommits = []) {
     confidence
   };
 }
-var BRANCH_TYPE_PATTERNS, COMMIT_TYPE_PATTERNS, PATH_AREA_PATTERNS;
+var GIT_TIMEOUT_MS = 1500, BRANCH_TYPE_PATTERNS, COMMIT_TYPE_PATTERNS, PATH_AREA_PATTERNS;
 var init_git = __esm(() => {
   BRANCH_TYPE_PATTERNS = [
     { pattern: /^(feat|feature)[/-]/i, type: "feature" },
@@ -22633,6 +22638,7 @@ __export(exports_config, {
   setDetectedHost: () => setDetectedHost,
   saveRootField: () => saveRootField,
   saveConfig: () => saveConfig,
+  resolveConfig: () => resolveConfig,
   removeSessionForPath: () => removeSessionForPath,
   loadConfigFromEnv: () => loadConfigFromEnv,
   loadConfig: () => loadConfig,
@@ -22661,13 +22667,15 @@ __export(exports_config, {
   getAllSessions: () => getAllSessions,
   estimateTokens: () => estimateTokens,
   detectHost: () => detectHost,
+  deriveSessionName: () => deriveSessionName,
   configExists: () => configExists,
   cacheStdin: () => cacheStdin,
+  atomicWriteFileSync: () => atomicWriteFileSync,
   DEFAULT_SDK_TIMEOUT_MS: () => DEFAULT_SDK_TIMEOUT_MS
 });
 import { homedir as homedir2 } from "os";
 import { join as join3, basename } from "path";
-import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, renameSync, unlinkSync, writeFileSync as writeFileSync2 } from "fs";
 function sanitizeForSessionName(s) {
   return s.toLowerCase().replace(/[^a-z0-9-_]/g, "-");
 }
@@ -22713,11 +22721,26 @@ async function initHook() {
   setDetectedHost(detectHost(input));
 }
 function parseTimeoutEnv() {
-  const raw = process.env.HONCHO_TIMEOUT;
+  return parseTimeoutEnvFrom(process.env);
+}
+function parseTimeoutEnvFrom(env) {
+  const raw = env.HONCHO_TIMEOUT;
   if (!raw)
     return;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+function atomicWriteFileSync(path, content) {
+  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+  writeFileSync2(tmp, content);
+  try {
+    renameSync(tmp, path);
+  } catch (err) {
+    try {
+      unlinkSync(tmp);
+    } catch {}
+    throw err;
+  }
 }
 function deepEqual(a, b) {
   if (a === b)
@@ -22757,11 +22780,11 @@ function loadConfig(host) {
   }
   return loadConfigFromEnv(resolvedHost);
 }
-function resolveConfig(raw, host) {
-  const apiKey = process.env.HONCHO_API_KEY || raw.apiKey;
+function resolveConfig(raw, host, env = process.env) {
+  const apiKey = env.HONCHO_API_KEY || raw.apiKey;
   if (!apiKey)
     return null;
-  const peerName = raw.peerName || process.env.HONCHO_PEER_NAME || process.env.USER || process.env.USERNAME || "user";
+  const peerName = raw.peerName || env.HONCHO_PEER_NAME || env.USER || env.USERNAME || "user";
   let workspace;
   let aiPeer;
   const hostBlock = raw.hosts?.[host] ?? raw.hosts?.[host.replace(/_/g, "-")] ?? raw.hosts?.[host.replace(/-/g, "_")];
@@ -22772,7 +22795,7 @@ function resolveConfig(raw, host) {
     workspace = hostBlock.workspace ?? DEFAULT_WORKSPACE[host];
     aiPeer = hostBlock.aiPeer ?? DEFAULT_AI_PEER[host];
   } else {
-    workspace = process.env.HONCHO_WORKSPACE ?? raw.workspace ?? DEFAULT_WORKSPACE[host];
+    workspace = env.HONCHO_WORKSPACE ?? raw.workspace ?? DEFAULT_WORKSPACE[host];
     if (host === "cursor") {
       aiPeer = raw.cursorPeer ?? DEFAULT_AI_PEER["cursor"];
     } else {
@@ -22796,10 +22819,10 @@ function resolveConfig(raw, host) {
     localContext: hostBlock?.localContext ?? raw.localContext,
     enabled: hostBlock?.enabled ?? raw.enabled,
     logging: hostBlock?.logging ?? raw.logging,
-    sdkTimeout: parseTimeoutEnv() ?? raw.sdkTimeout,
+    sdkTimeout: parseTimeoutEnvFrom(env) ?? raw.sdkTimeout,
     globalOverride: raw.globalOverride
   };
-  return mergeWithEnvVars(config2);
+  return mergeWithEnvVars(config2, env);
 }
 function loadConfigFromEnv(host) {
   const apiKey = process.env.HONCHO_API_KEY;
@@ -22831,17 +22854,17 @@ function loadConfigFromEnv(host) {
   }
   return config2;
 }
-function mergeWithEnvVars(config2) {
-  if (process.env.HONCHO_API_KEY) {
-    config2.apiKey = process.env.HONCHO_API_KEY;
+function mergeWithEnvVars(config2, env = process.env) {
+  if (env.HONCHO_API_KEY) {
+    config2.apiKey = env.HONCHO_API_KEY;
   }
-  if (process.env.HONCHO_PEER_NAME) {
-    config2.peerName = process.env.HONCHO_PEER_NAME;
+  if (env.HONCHO_PEER_NAME) {
+    config2.peerName = env.HONCHO_PEER_NAME;
   }
-  if (process.env.HONCHO_ENABLED === "false") {
+  if (env.HONCHO_ENABLED === "false") {
     config2.enabled = false;
   }
-  if (process.env.HONCHO_LOGGING === "false") {
+  if (env.HONCHO_LOGGING === "false") {
     config2.logging = false;
   }
   return config2;
@@ -22888,7 +22911,7 @@ function saveConfig(config2) {
   setHostIfExplicit("localContext", config2.localContext, existing.localContext);
   setHostIfExplicit("endpoint", config2.endpoint, existing.endpoint);
   existing.hosts[host] = hostEntry;
-  writeFileSync2(CONFIG_FILE, JSON.stringify(existing, null, 2));
+  atomicWriteFileSync(CONFIG_FILE, JSON.stringify(existing, null, 2));
 }
 function saveRootField(field, value) {
   if (!existsSync3(CONFIG_DIR)) {
@@ -22901,7 +22924,7 @@ function saveRootField(field, value) {
     } catch {}
   }
   existing[field] = value;
-  writeFileSync2(CONFIG_FILE, JSON.stringify(existing, null, 2));
+  atomicWriteFileSync(CONFIG_FILE, JSON.stringify(existing, null, 2));
 }
 function getClaudeSettingsPath() {
   return join3(homedir2(), ".claude", "settings.json");
@@ -22915,39 +22938,49 @@ function getSessionForPath(cwd) {
     return null;
   return config2.sessions[cwd] || null;
 }
-function getSessionName(cwd, instanceId) {
-  const config2 = loadConfig();
-  const strategy = config2?.sessionStrategy ?? "per-directory";
-  if (strategy === "per-directory") {
-    const configuredSession = getSessionForPath(cwd);
-    if (configuredSession) {
-      return configuredSession;
-    }
+function deriveSessionName(i) {
+  if (i.strategy === "per-directory" && i.override) {
+    return i.override;
   }
-  const usePrefix = config2?.sessionPeerPrefix !== false;
-  const peerPart = config2?.peerName ? sanitizeForSessionName(config2.peerName) : "user";
-  const repoPart = sanitizeForSessionName(basename(cwd));
-  const base = usePrefix ? `${peerPart}-${repoPart}` : repoPart;
-  switch (strategy) {
-    case "git-branch": {
-      const gitState = captureGitState(cwd);
-      if (gitState) {
-        const branchPart = sanitizeForSessionName(gitState.branch);
-        return `${base}-${branchPart}`;
+  const peerPart = i.peerName ? sanitizeForSessionName(i.peerName) : "user";
+  const repoPart = sanitizeForSessionName(basename(i.cwd));
+  const base = i.usePrefix ? `${peerPart}-${repoPart}` : repoPart;
+  switch (i.strategy) {
+    case "git-branch":
+      if (i.branch)
+        return `${base}-${sanitizeForSessionName(i.branch)}`;
+      return base;
+    case "chat-instance":
+      if (i.instanceId) {
+        return i.usePrefix ? `${peerPart}-chat-${i.instanceId}` : `chat-${i.instanceId}`;
       }
       return base;
-    }
-    case "chat-instance": {
-      const resolved = instanceId || getInstanceIdForCwd(cwd) || getClaudeInstanceId();
-      if (resolved) {
-        return usePrefix ? `${peerPart}-chat-${resolved}` : `chat-${resolved}`;
-      }
-      return base;
-    }
     case "per-directory":
     default:
       return base;
   }
+}
+function getSessionName(cwd, instanceId) {
+  const config2 = loadConfig();
+  const strategy = config2?.sessionStrategy ?? "per-directory";
+  let branch = null;
+  if (strategy === "git-branch") {
+    const gitState = captureGitState(cwd);
+    branch = gitState?.branch ?? null;
+  }
+  let resolvedInstance = null;
+  if (strategy === "chat-instance") {
+    resolvedInstance = instanceId || getInstanceIdForCwd(cwd) || getClaudeInstanceId() || null;
+  }
+  return deriveSessionName({
+    strategy,
+    cwd,
+    peerName: config2?.peerName ?? "user",
+    usePrefix: config2?.sessionPeerPrefix !== false,
+    branch,
+    instanceId: resolvedInstance,
+    override: strategy === "per-directory" ? getSessionForPath(cwd) : null
+  });
 }
 function setSessionForPath(cwd, sessionName) {
   const config2 = loadConfig();
