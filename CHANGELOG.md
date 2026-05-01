@@ -1,3 +1,9 @@
+## [1.9.0](https://github.com/offendingcommit/claude-honcho/compare/v1.8.0-oc...v1.9.0-oc) (2026-05-01)
+
+### Features
+
+* **honcho:** add observed_peer/observer_peer params to conclusion writes ([6797c81](https://github.com/offendingcommit/claude-honcho/commit/6797c819a83d497541f8b07fad77d07a2b33ef48))
+
 ## [1.8.0](https://github.com/offendingcommit/claude-honcho/compare/v1.7.0-oc...v1.8.0-oc) (2026-05-01)
 
 ### Features
