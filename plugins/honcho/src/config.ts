@@ -1,6 +1,6 @@
 import { homedir } from "os";
 import { join, basename } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "fs";
 import { captureGitState } from "./git.js";
 import { getInstanceIdForCwd, getClaudeInstanceId } from "./cache.js";
 
@@ -239,10 +239,32 @@ export interface HonchoCLAUDEConfig {
 
 /** Parse HONCHO_TIMEOUT env var into a positive integer, or undefined. */
 function parseTimeoutEnv(): number | undefined {
-  const raw = process.env.HONCHO_TIMEOUT;
+  return parseTimeoutEnvFrom(process.env);
+}
+
+function parseTimeoutEnvFrom(env: NodeJS.ProcessEnv): number | undefined {
+  const raw = env.HONCHO_TIMEOUT;
   if (!raw) return undefined;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * Atomic JSON write: write to a sibling tmp file, then rename over the
+ * target. A crash between write and rename leaves the original file
+ * intact; readers always observe a fully-written file (POSIX rename is
+ * atomic on the same filesystem). Used for ~/.honcho/config.json,
+ * which is read by every hook on every prompt.
+ */
+export function atomicWriteFileSync(path: string, content: string): void {
+  const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
+  writeFileSync(tmp, content);
+  try {
+    renameSync(tmp, path);
+  } catch (err) {
+    try { unlinkSync(tmp); } catch {}
+    throw err;
+  }
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -293,11 +315,22 @@ export function loadConfig(host?: HonchoHost): HonchoCLAUDEConfig | null {
   return loadConfigFromEnv(resolvedHost);
 }
 
-function resolveConfig(raw: HonchoFileConfig, host: HonchoHost): HonchoCLAUDEConfig | null {
-  const apiKey = process.env.HONCHO_API_KEY || raw.apiKey;
+/**
+ * Pure resolver: given raw file config + host + env vars, return the
+ * resolved runtime config. Exported for testability.
+ *
+ * `env` defaults to `process.env`. Pass an explicit object in tests
+ * to avoid mutating the real environment.
+ */
+export function resolveConfig(
+  raw: HonchoFileConfig,
+  host: HonchoHost,
+  env: NodeJS.ProcessEnv = process.env,
+): HonchoCLAUDEConfig | null {
+  const apiKey = env.HONCHO_API_KEY || raw.apiKey;
   if (!apiKey) return null;
 
-  const peerName = raw.peerName || process.env.HONCHO_PEER_NAME || process.env.USER || process.env.USERNAME || "user";
+  const peerName = raw.peerName || env.HONCHO_PEER_NAME || env.USER || env.USERNAME || "user";
 
   // Resolve host-specific fields
   let workspace: string;
@@ -320,7 +353,7 @@ function resolveConfig(raw: HonchoFileConfig, host: HonchoHost): HonchoCLAUDECon
     // Env var is respected here (matching main-branch behavior) so it gets
     // captured into the hosts block on first saveConfig(), after which the
     // env var becomes redundant and is safely ignored.
-    workspace = process.env.HONCHO_WORKSPACE ?? raw.workspace ?? DEFAULT_WORKSPACE[host];
+    workspace = env.HONCHO_WORKSPACE ?? raw.workspace ?? DEFAULT_WORKSPACE[host];
     if (host === "cursor") {
       aiPeer = raw.cursorPeer ?? DEFAULT_AI_PEER["cursor"];
     } else {
@@ -348,11 +381,11 @@ function resolveConfig(raw: HonchoFileConfig, host: HonchoHost): HonchoCLAUDECon
     localContext: hostBlock?.localContext ?? raw.localContext,
     enabled: hostBlock?.enabled ?? raw.enabled,
     logging: hostBlock?.logging ?? raw.logging,
-    sdkTimeout: parseTimeoutEnv() ?? raw.sdkTimeout,
+    sdkTimeout: parseTimeoutEnvFrom(env) ?? raw.sdkTimeout,
     globalOverride: raw.globalOverride,
   };
 
-  return mergeWithEnvVars(config);
+  return mergeWithEnvVars(config, env);
 }
 
 /**
@@ -405,17 +438,20 @@ export function loadConfigFromEnv(host?: HonchoHost): HonchoCLAUDEConfig | null 
  * them here, otherwise a value set for one host clobbers the other.
  * (HONCHO_WORKSPACE IS respected in loadConfigFromEnv when no file exists.)
  */
-function mergeWithEnvVars(config: HonchoCLAUDEConfig): HonchoCLAUDEConfig {
-  if (process.env.HONCHO_API_KEY) {
-    config.apiKey = process.env.HONCHO_API_KEY;
+function mergeWithEnvVars(
+  config: HonchoCLAUDEConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): HonchoCLAUDEConfig {
+  if (env.HONCHO_API_KEY) {
+    config.apiKey = env.HONCHO_API_KEY;
   }
-  if (process.env.HONCHO_PEER_NAME) {
-    config.peerName = process.env.HONCHO_PEER_NAME;
+  if (env.HONCHO_PEER_NAME) {
+    config.peerName = env.HONCHO_PEER_NAME;
   }
-  if (process.env.HONCHO_ENABLED === "false") {
+  if (env.HONCHO_ENABLED === "false") {
     config.enabled = false;
   }
-  if (process.env.HONCHO_LOGGING === "false") {
+  if (env.HONCHO_LOGGING === "false") {
     config.logging = false;
   }
   return config;
@@ -506,7 +542,7 @@ export function saveConfig(config: HonchoCLAUDEConfig): void {
 
   existing.hosts[host] = hostEntry;
 
-  writeFileSync(CONFIG_FILE, JSON.stringify(existing, null, 2));
+  atomicWriteFileSync(CONFIG_FILE, JSON.stringify(existing, null, 2));
 }
 
 /**
@@ -528,7 +564,7 @@ export function saveRootField(field: string, value: unknown): void {
   }
 
   existing[field] = value;
-  writeFileSync(CONFIG_FILE, JSON.stringify(existing, null, 2));
+  atomicWriteFileSync(CONFIG_FILE, JSON.stringify(existing, null, 2));
 }
 
 export function getClaudeSettingsPath(): string {
@@ -545,6 +581,48 @@ export function getSessionForPath(cwd: string): string | null {
   return config.sessions[cwd] || null;
 }
 
+export interface SessionNameInputs {
+  strategy: SessionStrategy;
+  cwd: string;
+  peerName: string;
+  usePrefix: boolean;
+  /** Branch name for `git-branch` strategy. Falsy → falls back to base. */
+  branch?: string | null;
+  /** Instance ID for `chat-instance` strategy. Falsy → falls back to base. */
+  instanceId?: string | null;
+  /** Pre-configured session override (only honored for `per-directory`). */
+  override?: string | null;
+}
+
+/**
+ * Pure session-name derivation. All effectful inputs (config load, git
+ * state, instance-id cache) must be resolved by the caller. Exported
+ * for testability — `getSessionName` is the impure wrapper.
+ */
+export function deriveSessionName(i: SessionNameInputs): string {
+  if (i.strategy === "per-directory" && i.override) {
+    return i.override;
+  }
+
+  const peerPart = i.peerName ? sanitizeForSessionName(i.peerName) : "user";
+  const repoPart = sanitizeForSessionName(basename(i.cwd));
+  const base = i.usePrefix ? `${peerPart}-${repoPart}` : repoPart;
+
+  switch (i.strategy) {
+    case "git-branch":
+      if (i.branch) return `${base}-${sanitizeForSessionName(i.branch)}`;
+      return base;
+    case "chat-instance":
+      if (i.instanceId) {
+        return i.usePrefix ? `${peerPart}-chat-${i.instanceId}` : `chat-${i.instanceId}`;
+      }
+      return base;
+    case "per-directory":
+    default:
+      return base;
+  }
+}
+
 /** Session name derived from strategy. Manual overrides only apply to per-directory.
  *  @param instanceId - Explicit instance ID for chat-instance strategy. Falls back to
  *                      per-cwd cache, then global cache. Callers should pass hookInput.session_id
@@ -554,41 +632,26 @@ export function getSessionName(cwd: string, instanceId?: string): string {
   const config = loadConfig();
   const strategy = config?.sessionStrategy ?? "per-directory";
 
-  // Manual overrides only apply to per-directory strategy.
-  // For chat-instance and git-branch, the session name is always derived dynamically.
-  if (strategy === "per-directory") {
-    const configuredSession = getSessionForPath(cwd);
-    if (configuredSession) {
-      return configuredSession;
-    }
+  let branch: string | null = null;
+  if (strategy === "git-branch") {
+    const gitState = captureGitState(cwd);
+    branch = gitState?.branch ?? null;
   }
 
-  const usePrefix = config?.sessionPeerPrefix !== false; // default true
-  const peerPart = config?.peerName ? sanitizeForSessionName(config.peerName) : "user";
-  const repoPart = sanitizeForSessionName(basename(cwd));
-  const base = usePrefix ? `${peerPart}-${repoPart}` : repoPart;
-
-  switch (strategy) {
-    case "git-branch": {
-      const gitState = captureGitState(cwd);
-      if (gitState) {
-        const branchPart = sanitizeForSessionName(gitState.branch);
-        return `${base}-${branchPart}`;
-      }
-      return base;
-    }
-    case "chat-instance": {
-      // Prefer explicit instanceId > per-cwd cache > global cache (legacy)
-      const resolved = instanceId || getInstanceIdForCwd(cwd) || getClaudeInstanceId();
-      if (resolved) {
-        return usePrefix ? `${peerPart}-chat-${resolved}` : `chat-${resolved}`;
-      }
-      return base;
-    }
-    case "per-directory":
-    default:
-      return base;
+  let resolvedInstance: string | null = null;
+  if (strategy === "chat-instance") {
+    resolvedInstance = instanceId || getInstanceIdForCwd(cwd) || getClaudeInstanceId() || null;
   }
+
+  return deriveSessionName({
+    strategy,
+    cwd,
+    peerName: config?.peerName ?? "user",
+    usePrefix: config?.sessionPeerPrefix !== false,
+    branch,
+    instanceId: resolvedInstance,
+    override: strategy === "per-directory" ? getSessionForPath(cwd) : null,
+  });
 }
 
 export function setSessionForPath(cwd: string, sessionName: string): void {
