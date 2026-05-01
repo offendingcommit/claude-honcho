@@ -29216,6 +29216,23 @@ var ENV_SHADOW_MAP = {
 };
 var OBSERVED_USER = "user";
 var OBSERVED_SELF = "self";
+function resolveConclusionPeers(args, observed, observationMode, config2) {
+  const observedLiteral = args?.observed_peer;
+  const observerLiteral = args?.observer_peer;
+  if (observedLiteral || observerLiteral) {
+    return {
+      observerName: observerLiteral ?? config2.aiPeer,
+      observedName: observedLiteral ?? config2.peerName
+    };
+  }
+  if (observed === OBSERVED_SELF) {
+    return { observerName: config2.aiPeer, observedName: config2.aiPeer };
+  }
+  return {
+    observerName: observationMode === "unified" ? config2.peerName : config2.aiPeer,
+    observedName: config2.peerName
+  };
+}
 var DANGEROUS_FIELDS = new Set(["workspace", "endpoint.environment", "endpoint.baseUrl"]);
 var SESSION_AFFECTING_FIELDS = new Set([
   "workspace",
@@ -29678,6 +29695,14 @@ For either target, the test before writing is: "would future-me find this useful
                 enum: [OBSERVED_USER, OBSERVED_SELF],
                 description: "'user' (default) saves a conclusion about the user. 'self' saves to the AI peer's own working log \u2014 retrievable across sessions via query_conclusions. Write liberally; consolidation prunes.",
                 default: OBSERVED_USER
+              },
+              observed_peer: {
+                type: "string",
+                description: "Literal peer name being observed (escape hatch for multi-agent setups). Overrides the 'observed' alias when provided. Use to write about a specific agent (e.g. observed_peer='codex' for cell-B writes when paired with observer_peer=<userName>)."
+              },
+              observer_peer: {
+                type: "string",
+                description: "Literal peer name doing the observing. Defaults to the AI peer (caller). Pass the user peer name to write a cell-B conclusion (user's evaluation of an agent)."
               }
             },
             required: ["content"]
@@ -29967,6 +29992,14 @@ For either target, the test before writing is: "would future-me find this useful
                 enum: [OBSERVED_USER, OBSERVED_SELF],
                 description: "'user' (default) saves conclusions about the user. 'self' saves conclusions about the AI peer (Claude).",
                 default: OBSERVED_USER
+              },
+              observed_peer: {
+                type: "string",
+                description: "Literal peer name being observed (escape hatch for multi-agent / cell-B writes). Overrides the 'observed' alias when provided."
+              },
+              observer_peer: {
+                type: "string",
+                description: "Literal peer name doing the observing. Defaults to the AI peer (caller). Pass user peer name for cell-B writes."
               }
             },
             required: ["contents"]
@@ -30156,15 +30189,19 @@ For either target, the test before writing is: "would future-me find this useful
           };
         }
         const observed = args?.observed ?? OBSERVED_USER;
-        const observationMode = getObservationMode(config2);
-        const { scopePeer, observedPeerName } = observed === OBSERVED_SELF ? { scopePeer: await honcho.peer(config2.aiPeer), observedPeerName: config2.aiPeer } : {
-          scopePeer: await honcho.peer(observationMode === "unified" ? config2.peerName : config2.aiPeer),
-          observedPeerName: config2.peerName
-        };
-        const conclusionScope = scopePeer.conclusionsOf(observedPeerName);
-        const created = await conclusionScope.create(contents.map((content) => ({ content })));
+        const { observerName, observedName } = resolveConclusionPeers(args, observed, getObservationMode(config2), config2);
+        const observerPeer = await honcho.peer(observerName);
+        const created = await observerPeer.conclusionsOf(observedName).create(contents.map((content) => ({ content })));
         return {
-          content: [{ type: "text", text: JSON.stringify({ success: true, created: created.length, observed }) }]
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              created: created.length,
+              observer: observerName,
+              observed: observedName
+            })
+          }]
         };
       } catch (error3) {
         return {
@@ -30325,16 +30362,19 @@ For either target, the test before writing is: "would future-me find this useful
         case "create_conclusion": {
           const content = args?.content;
           const observed = args?.observed ?? OBSERVED_USER;
-          const { writePeer, observedPeerName } = observed === OBSERVED_SELF ? { writePeer: aiPeer ?? await honcho.peer(config2.aiPeer), observedPeerName: config2.aiPeer } : { writePeer: activePeer, observedPeerName: config2.peerName };
-          const conclusions = await writePeer.conclusionsOf(observedPeerName).create({
+          const { observerName, observedName } = resolveConclusionPeers(args, observed, observationMode, config2);
+          const writePeer = observerName === config2.peerName && activePeer === userPeer ? userPeer : observerName === config2.aiPeer && aiPeer ? aiPeer : await honcho.peer(observerName);
+          const conclusions = await writePeer.conclusionsOf(observedName).create({
             content,
             sessionId: session.id
           });
+          const tag = observed === OBSERVED_SELF ? "self-" : "";
+          const edge = observerName !== config2.aiPeer && observerName !== config2.peerName ? ` (observer=${observerName}, observed=${observedName})` : "";
           return {
             content: [
               {
                 type: "text",
-                text: `Saved ${observed === OBSERVED_SELF ? "self-" : ""}conclusion: ${conclusions[0]?.content || content}`
+                text: `Saved ${tag}conclusion${edge}: ${conclusions[0]?.content || content}`
               }
             ]
           };

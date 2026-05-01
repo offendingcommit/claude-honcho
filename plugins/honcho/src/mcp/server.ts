@@ -55,6 +55,37 @@ const OBSERVED_USER = "user" as const;
 const OBSERVED_SELF = "self" as const;
 type ObservedTarget = typeof OBSERVED_USER | typeof OBSERVED_SELF;
 
+/**
+ * Resolve (observer, observed) peer names for a conclusion write.
+ *
+ * Literal peer-name args (observed_peer / observer_peer) take precedence over
+ * the alias-based routing — this is the escape hatch for multi-agent setups
+ * and cell-B writes (user evaluating an AI peer). When neither literal is
+ * provided, falls back to the OBSERVED_USER/OBSERVED_SELF alias semantics.
+ */
+function resolveConclusionPeers(
+  args: Record<string, unknown> | undefined,
+  observed: ObservedTarget,
+  observationMode: "unified" | "directional",
+  config: { peerName: string; aiPeer: string }
+): { observerName: string; observedName: string } {
+  const observedLiteral = args?.observed_peer as string | undefined;
+  const observerLiteral = args?.observer_peer as string | undefined;
+  if (observedLiteral || observerLiteral) {
+    return {
+      observerName: observerLiteral ?? config.aiPeer,
+      observedName: observedLiteral ?? config.peerName,
+    };
+  }
+  if (observed === OBSERVED_SELF) {
+    return { observerName: config.aiPeer, observedName: config.aiPeer };
+  }
+  return {
+    observerName: observationMode === "unified" ? config.peerName : config.aiPeer,
+    observedName: config.peerName,
+  };
+}
+
 // Fields that require confirm=true to change
 const DANGEROUS_FIELDS = new Set(["workspace", "endpoint.environment", "endpoint.baseUrl"]);
 
@@ -600,6 +631,14 @@ export async function runMcpServer(): Promise<void> {
                 description: "'user' (default) saves a conclusion about the user. 'self' saves to the AI peer's own working log — retrievable across sessions via query_conclusions. Write liberally; consolidation prunes.",
                 default: OBSERVED_USER,
               },
+              observed_peer: {
+                type: "string",
+                description: "Literal peer name being observed (escape hatch for multi-agent setups). Overrides the 'observed' alias when provided. Use to write about a specific agent (e.g. observed_peer='codex' for cell-B writes when paired with observer_peer=<userName>).",
+              },
+              observer_peer: {
+                type: "string",
+                description: "Literal peer name doing the observing. Defaults to the AI peer (caller). Pass the user peer name to write a cell-B conclusion (user's evaluation of an agent).",
+              },
             },
             required: ["content"],
           },
@@ -889,6 +928,14 @@ export async function runMcpServer(): Promise<void> {
                 description: "'user' (default) saves conclusions about the user. 'self' saves conclusions about the AI peer (Claude).",
                 default: OBSERVED_USER,
               },
+              observed_peer: {
+                type: "string",
+                description: "Literal peer name being observed (escape hatch for multi-agent / cell-B writes). Overrides the 'observed' alias when provided.",
+              },
+              observer_peer: {
+                type: "string",
+                description: "Literal peer name doing the observing. Defaults to the AI peer (caller). Pass user peer name for cell-B writes.",
+              },
             },
             required: ["contents"],
           },
@@ -1099,21 +1146,26 @@ export async function runMcpServer(): Promise<void> {
           };
         }
         const observed: ObservedTarget = (args?.observed as ObservedTarget) ?? OBSERVED_USER;
-        // Self-conclusions: aiPeer observes itself, regardless of observation mode.
-        // User-conclusions: routed by observation mode (unified=user→user, directional=ai→user).
-        const observationMode = getObservationMode(config);
-        const { scopePeer, observedPeerName } = observed === OBSERVED_SELF
-          ? { scopePeer: await honcho.peer(config.aiPeer), observedPeerName: config.aiPeer }
-          : {
-              scopePeer: await honcho.peer(observationMode === "unified" ? config.peerName : config.aiPeer),
-              observedPeerName: config.peerName,
-            };
-        const conclusionScope = scopePeer.conclusionsOf(observedPeerName);
-        const created = await conclusionScope.create(
+        const { observerName, observedName } = resolveConclusionPeers(
+          args,
+          observed,
+          getObservationMode(config),
+          config
+        );
+        const observerPeer = await honcho.peer(observerName);
+        const created = await observerPeer.conclusionsOf(observedName).create(
           contents.map((content) => ({ content }))
         );
         return {
-          content: [{ type: "text", text: JSON.stringify({ success: true, created: created.length, observed }) }],
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              created: created.length,
+              observer: observerName,
+              observed: observedName,
+            }),
+          }],
         };
       } catch (error) {
         return {
@@ -1305,23 +1357,36 @@ export async function runMcpServer(): Promise<void> {
         case "create_conclusion": {
           const content = args?.content as string;
           const observed: ObservedTarget = (args?.observed as ObservedTarget) ?? OBSERVED_USER;
+          const { observerName, observedName } = resolveConclusionPeers(
+            args,
+            observed,
+            observationMode,
+            config
+          );
 
-          // Self-conclusions: aiPeer observes itself. User-conclusions: existing
-          // observation-mode routing (activePeer.conclusionsOf(userPeerName)).
-          const { writePeer, observedPeerName } = observed === OBSERVED_SELF
-            ? { writePeer: aiPeer ?? await honcho.peer(config.aiPeer), observedPeerName: config.aiPeer }
-            : { writePeer: activePeer, observedPeerName: config.peerName };
+          // Reuse cached peer objects when the resolved names match the
+          // session's active peers; otherwise fetch fresh peer objects for
+          // arbitrary multi-agent edges.
+          const writePeer = observerName === config.peerName && activePeer === userPeer
+            ? userPeer
+            : observerName === config.aiPeer && aiPeer
+              ? aiPeer
+              : await honcho.peer(observerName);
 
-          const conclusions = await writePeer.conclusionsOf(observedPeerName).create({
+          const conclusions = await writePeer.conclusionsOf(observedName).create({
             content,
             sessionId: session.id,
           });
 
+          const tag = observed === OBSERVED_SELF ? "self-" : "";
+          const edge = observerName !== config.aiPeer && observerName !== config.peerName
+            ? ` (observer=${observerName}, observed=${observedName})`
+            : "";
           return {
             content: [
               {
                 type: "text",
-                text: `Saved ${observed === OBSERVED_SELF ? "self-" : ""}conclusion: ${conclusions[0]?.content || content}`,
+                text: `Saved ${tag}conclusion${edge}: ${conclusions[0]?.content || content}`,
               },
             ],
           };
