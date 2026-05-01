@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/offendingcommit/claude-honcho/compare/v1.6.0-oc...v1.7.0-oc) (2026-05-01)
+
+### Features
+
+* **honcho:** recalibrate create_conclusion description for liberal self-logging ([169d4f1](https://github.com/offendingcommit/claude-honcho/commit/169d4f1aed23eb113917128ce5c7fddc4ef50fcd))
+
 ## [1.6.0](https://github.com/offendingcommit/claude-honcho/compare/v1.5.0-oc...v1.6.0-oc) (2026-04-30)
 
 ### Features
