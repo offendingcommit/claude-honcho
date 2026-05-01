@@ -1,3 +1,9 @@
+## [1.8.0](https://github.com/offendingcommit/claude-honcho/compare/v1.7.0-oc...v1.8.0-oc) (2026-05-01)
+
+### Features
+
+* **honcho:** add self-log read tools and arbitrary-peer query escape hatch ([4decc4f](https://github.com/offendingcommit/claude-honcho/commit/4decc4f3e1559d286400f08408fdd306cfbb4027))
+
 ## [1.7.0](https://github.com/offendingcommit/claude-honcho/compare/v1.6.0-oc...v1.7.0-oc) (2026-05-01)
 
 ### Features
