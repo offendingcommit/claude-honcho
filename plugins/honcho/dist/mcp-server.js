@@ -29740,7 +29740,7 @@ For either target, the test before writing is: "would future-me find this useful
         },
         {
           name: "query_conclusions",
-          description: "Semantic search across saved conclusions about the user. Use this to find specific knowledge Honcho has derived \u2014 more targeted than list_conclusions (which is just paginated). Returns conclusions ranked by relevance.",
+          description: "Semantic search across saved conclusions about the user. Returns conclusions ranked by relevance. For your own self-log, use query_self_conclusions. For cross-peer queries (multi-agent setups), use query_peer_conclusions.",
           inputSchema: {
             type: "object",
             properties: {
@@ -29755,6 +29755,49 @@ For either target, the test before writing is: "would future-me find this useful
               }
             },
             required: ["query"]
+          }
+        },
+        {
+          name: "query_self_conclusions",
+          description: "Semantic search across YOUR cross-session self-log (conclusions you've written about yourself as the AI peer via create_conclusion(observed='self')). Use to retrieve patterns, discoveries, and course-corrections you've logged in past sessions on a related topic. Symmetric with query_conclusions but scoped to the AI peer.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Semantic query" },
+              top_k: { type: "number", description: "Max results (default 10)", default: 10 }
+            },
+            required: ["query"]
+          }
+        },
+        {
+          name: "list_self_conclusions",
+          description: "Paginated list of YOUR self-log conclusions. Use to audit what you've recorded or find IDs for deletion. For semantic search, prefer query_self_conclusions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              page: { type: "number", description: "Page number (1-indexed)", default: 1 },
+              size: { type: "number", description: "Results per page (max 50)", default: 20 }
+            }
+          }
+        },
+        {
+          name: "query_peer_conclusions",
+          description: "Semantic search across conclusions on an arbitrary (observer, observed) peer edge. Escape hatch for multi-agent setups (Claude + Codex + Hermes etc.) where you need to address peers by name rather than alias. Common cases: (a) cross-peer queries \u2014 what does another agent know about the user; (b) cell-B queries \u2014 what does the user think about a specific agent (observer=user, observed=<agent>). For self-log queries, prefer query_self_conclusions; for default user queries, prefer query_conclusions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Semantic query" },
+              observed_peer: {
+                type: "string",
+                description: "Peer name being observed (the subject of the conclusions). Required."
+              },
+              observer_peer: {
+                type: "string",
+                description: "Peer name doing the observing. Defaults to the AI peer (caller). Pass user peer name to query cell B (user's evaluations of an agent)."
+              },
+              top_k: { type: "number", description: "Max results (default 10)", default: 10 }
+            },
+            required: ["query", "observed_peer"]
           }
         },
         {
@@ -30155,6 +30198,76 @@ For either target, the test before writing is: "would future-me find this useful
         await conclusionScope.delete(id);
         return {
           content: [{ type: "text", text: `Deleted conclusion ${id}` }]
+        };
+      } catch (error3) {
+        return {
+          content: [{ type: "text", text: `Error: ${error3 instanceof Error ? error3.message : String(error3)}` }],
+          isError: true
+        };
+      }
+    }
+    if (name === "query_self_conclusions" || name === "list_self_conclusions") {
+      try {
+        const aiPeer = await honcho.peer(config2.aiPeer);
+        const conclusionScope = aiPeer.conclusionsOf(config2.aiPeer);
+        if (name === "query_self_conclusions") {
+          const query = args?.query;
+          const topK = args?.top_k ?? 10;
+          const conclusions = await conclusionScope.query(query, topK);
+          const items2 = (conclusions ?? []).map((c) => ({
+            id: c.id,
+            content: c.content,
+            sessionId: c.sessionId ?? c.session_id,
+            createdAt: c.createdAt ?? c.created_at
+          }));
+          return { content: [{ type: "text", text: JSON.stringify(items2, null, 2) }] };
+        }
+        const page = args?.page ?? 1;
+        const size = Math.min(args?.size ?? 20, 100);
+        const result = await conclusionScope.list({ page, size });
+        const items = result.items.map((c) => ({
+          id: c.id,
+          content: c.content,
+          createdAt: c.createdAt
+        }));
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ items, total: result.total, page: result.page, pages: result.pages }, null, 2)
+          }]
+        };
+      } catch (error3) {
+        return {
+          content: [{ type: "text", text: `Error: ${error3 instanceof Error ? error3.message : String(error3)}` }],
+          isError: true
+        };
+      }
+    }
+    if (name === "query_peer_conclusions") {
+      try {
+        const query = args?.query;
+        const observedPeerName = args?.observed_peer;
+        const observerPeerName = args?.observer_peer ?? config2.aiPeer;
+        const topK = args?.top_k ?? 10;
+        if (!observedPeerName) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ success: false, error: "observed_peer is required" }) }],
+            isError: true
+          };
+        }
+        const observer = await honcho.peer(observerPeerName);
+        const conclusions = await observer.conclusionsOf(observedPeerName).query(query, topK);
+        const items = (conclusions ?? []).map((c) => ({
+          id: c.id,
+          content: c.content,
+          sessionId: c.sessionId ?? c.session_id,
+          createdAt: c.createdAt ?? c.created_at
+        }));
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ observer: observerPeerName, observed: observedPeerName, items }, null, 2)
+          }]
         };
       } catch (error3) {
         return {
