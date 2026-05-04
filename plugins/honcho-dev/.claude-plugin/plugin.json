@@ -1,6 +1,6 @@
 {
   "name": "honcho-dev",
-  "version": "2.0.0-oc",
+  "version": "1.0.0-oc",
   "description": "Skills for building AI applications with the Honcho SDK",
   "author": {
     "name": "Plastic Labs",
