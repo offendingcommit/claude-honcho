@@ -2,6 +2,7 @@ import { Honcho } from "@honcho-ai/sdk";
 import { loadConfig, getSessionForPath, setSessionForPath, getSessionName, getHonchoClientOptions, isPluginEnabled, getCachedStdin, getObservationMode } from "../config.js";
 import {
   setCachedUserContext,
+  setCachedClaudeContext,
   setCachedSessionId,
   resetMessageCount,
   setClaudeInstanceId,
@@ -106,13 +107,13 @@ export async function handleSessionStart(): Promise<void> {
     setCachedSessionId(cwd, sessionName, session.id, claudeInstanceId);
 
     // Step 4: Add peers to session (materializes session server-side).
-    // Peer defaults (observeMe, observeOthers) are managed server-side —
-    // configure them via API or on app.honcho.dev. We only override observeOthers
-    // for the AI peer in directional mode so it can observe the user.
+    // Always suppress claude's self-observation (observeMe: false) to avoid
+    // tool call noise polluting conclusions. In directional mode, claude also
+    // observes the user so the deriver builds alice-focused insights.
     const observationMode = getObservationMode(config);
     const peers: Parameters<typeof session.addPeers>[0] = observationMode === "directional"
-      ? [userPeer, [aiPeer, { observeOthers: true }]]
-      : [userPeer, aiPeer];
+      ? [userPeer, [aiPeer, { observeMe: false, observeOthers: true }]]
+      : [userPeer, [aiPeer, { observeMe: false }]];
     await session.addPeers(peers);
 
     // Only persist session names for per-directory strategy (stable names).
@@ -165,10 +166,13 @@ export async function handleSessionStart(): Promise<void> {
     // unified: user observes self — use userPeer, no target.
     // directional: aiPeer observes user — use aiPeer with target.
     const contextLabel = observationMode === "unified" ? "userPeer.context()" : "aiPeer.context(target=user)";
-    const [userContextResult] = await Promise.allSettled([
+    // Self-context: aiPeer observes itself. Always fetched the same way regardless of mode.
+    // Capped low (10) — self-conclusions should be sparse and course-correcting.
+    const [userContextResult, claudeContextResult] = await Promise.allSettled([
       observationMode === "unified"
         ? userPeer.context({ maxConclusions: 25, includeMostFrequent: true })
         : aiPeer.context({ target: config.peerName, maxConclusions: 25, includeMostFrequent: true }),
+      aiPeer.context({ target: config.aiPeer, maxConclusions: 10, includeMostFrequent: false }),
     ]);
 
     // Dialectic: fire-and-forget. Results feed the knowledge graph;
@@ -198,9 +202,10 @@ export async function handleSessionStart(): Promise<void> {
     const fetchDuration = Date.now() - fetchStart;
     const asyncResults = [
       { name: contextLabel, success: userContextResult.status === "fulfilled" },
+      { name: "aiPeer.context(target=self)", success: claudeContextResult.status === "fulfilled" },
     ];
     const successCount = asyncResults.filter(r => r.success).length;
-    logAsync("context-fetch", `Context: ${successCount}/1 succeeded in ${fetchDuration}ms (dialectic fire-and-forget)`, asyncResults);
+    logAsync("context-fetch", `Context: ${successCount}/2 succeeded in ${fetchDuration}ms (dialectic fire-and-forget)`, asyncResults);
 
     // Verbose output (file-based — ~/.honcho/verbose.log)
     if (userContextResult.status === "fulfilled" && userContextResult.value) {
@@ -216,6 +221,16 @@ export async function handleSessionStart(): Promise<void> {
       const rep = context.representation;
       const count = typeof rep === "string" ? rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#")).length : 0;
       logCache("write", "userContext", `${count} conclusions`);
+    }
+
+    // Cache self-context (Claude observing itself). Sparse by design — only
+    // course-correcting self-conclusions land here.
+    if (claudeContextResult.status === "fulfilled" && claudeContextResult.value) {
+      const selfCtx = claudeContextResult.value as any;
+      setCachedClaudeContext(selfCtx);
+      const rep = selfCtx.representation;
+      const count = typeof rep === "string" ? rep.split("\n").filter((l: string) => l.trim() && !l.startsWith("#")).length : 0;
+      logCache("write", "claudeContext", `${count} self-conclusions`);
     }
 
     // Stop spinner; avoid stdout writes here to prevent UI artifacts.

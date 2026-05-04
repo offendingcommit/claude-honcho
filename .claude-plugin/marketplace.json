@@ -1,28 +1,37 @@
 {
   "name": "honcho",
   "owner": {
-    "name": "Plastic Labs",
-    "email": "hello@plasticlabs.ai"
+    "name": "Offending Commit",
+    "email": "djfoxyslpr@gmail.com",
+    "url": "https://github.com/offendingcommit/claude-honcho"
   },
   "metadata": {
     "description": "Honcho plugins for Claude Code - memory, development tools, and more",
-    "version": "0.2.4"
+    "version": "2.0.0-oc"
   },
   "plugins": [
     {
       "name": "honcho",
       "source": "./plugins/honcho",
       "description": "Persistent memory for Claude Code sessions using Honcho",
-      "version": "0.2.4",
-      "keywords": ["memory", "context", "persistence"],
+      "version": "2.0.0-oc",
+      "keywords": [
+        "memory",
+        "context",
+        "persistence"
+      ],
       "strict": false
     },
     {
       "name": "honcho-dev",
       "source": "./plugins/honcho-dev",
       "description": "Skills for building AI applications with the Honcho SDK",
-      "version": "0.2.4",
-      "keywords": ["sdk", "development", "migration"],
+      "version": "2.0.0-oc",
+      "keywords": [
+        "sdk",
+        "development",
+        "migration"
+      ],
       "strict": false
     }
   ]

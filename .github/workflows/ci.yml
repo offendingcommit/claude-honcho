@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --if-present typecheck
+      - run: pnpm --filter claude-honcho build
+
+  validate-json:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate plugin JSON files
+        run: |
+          for f in .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json; do
+            echo "Validating $f"
+            node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "$f"
+          done
+      - name: Verify version sync
+        run: |
+          node -e "
+            const fs=require('fs');
+            const m=JSON.parse(fs.readFileSync('.claude-plugin/marketplace.json','utf8'));
+            const a=JSON.parse(fs.readFileSync('plugins/honcho/.claude-plugin/plugin.json','utf8'));
+            const b=JSON.parse(fs.readFileSync('plugins/honcho-dev/.claude-plugin/plugin.json','utf8'));
+            const v=m.metadata.version;
+            const errs=[];
+            if(a.version!==v)errs.push('honcho/plugin.json='+a.version);
+            if(b.version!==v)errs.push('honcho-dev/plugin.json='+b.version);
+            for(const p of m.plugins)if(p.version!==v)errs.push('marketplace.plugins['+p.name+']='+p.version);
+            if(errs.length){console.error('Mismatch vs '+v+':\n'+errs.join('\n'));process.exit(1);}
+            console.log('Versions synced at '+v);
+          "

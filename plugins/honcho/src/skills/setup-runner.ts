@@ -1,18 +1,20 @@
 #!/usr/bin/env bun
-import { Honcho } from "@honcho-ai/sdk";
 import {
   loadConfig,
   loadConfigFromEnv,
   saveConfig,
   getConfigPath,
-  getConfigDir,
-  getHonchoClientOptions,
-  getDetectedHost,
-  getDefaultWorkspace,
-  getDefaultAiPeer,
   configExists,
   setDetectedHost,
+  getEndpointInfo,
+  saveRootField,
 } from "../config.js";
+import {
+  checkHonchoServer,
+  checkHonchoAuth,
+  gatherSummary,
+  getServerProbeUrl,
+} from "../health.js";
 import * as s from "../styles.js";
 
 async function setup(): Promise<void> {
@@ -66,52 +68,89 @@ async function setup(): Promise<void> {
     process.exit(1);
   }
 
-  try {
-    const honcho = new Honcho(getHonchoClientOptions(config));
-    const session = await honcho.session("setup-test");
-    const peer = await honcho.peer(config.peerName);
-    console.log(s.success("Connected to Honcho API"));
-    console.log(`  ${s.label("Workspace")}: ${config.workspace}`);
-    console.log(`  ${s.label("Peer")}:      ${config.peerName}`);
-    console.log(`  ${s.label("AI Peer")}:   ${config.aiPeer}`);
-    console.log("");
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.log(s.warn(`Connection failed: ${msg}`));
-    if (msg.includes("401") || msg.includes("auth")) {
-      console.log(s.dim("  API key may be invalid. Get a new one at https://app.honcho.dev"));
+  const endpointInfo = getEndpointInfo(config);
+  console.log(`  ${s.label("Endpoint")}:    ${endpointInfo.url} ${s.dim(`(${endpointInfo.type})`)}`);
+
+  // Liveness probe -- soft warn. Hits /openapi.json (FastAPI default) since
+  // real Honcho deployments don't expose /health on the API server.
+  const server = await checkHonchoServer(config);
+  if (server.ok) {
+    const versionTag = server.serverVersion ? `Honcho ${server.serverVersion}` : "ok";
+    console.log(`  ${s.label("Server")}:      ${s.success(versionTag)} ${s.dim(`(${server.durationMs}ms)`)}`);
+  } else {
+    const detail = server.httpStatus ? `HTTP ${server.httpStatus}` : server.error ?? "unknown";
+    console.log(`  ${s.label("Server")}:      ${s.warn("unreachable")} ${s.dim(`(${detail} @ ${getServerProbeUrl(config)})`)}`);
+    console.log(s.dim("    Continuing to auth check -- some deployments hide /openapi.json."));
+  }
+
+  // Auth check
+  const auth = await checkHonchoAuth(config);
+  if (!auth.ok) {
+    const label = auth.reason === "no-key"
+      ? "missing API key"
+      : auth.reason === "unauthorized"
+      ? "unauthorized"
+      : auth.reason === "network"
+      ? "network failure"
+      : "failed";
+    console.log(`  ${s.label("Auth")}:        ${s.error(label)}${auth.message ? ` ${s.dim(auth.message.slice(0, 60))}` : ""}`);
+    if (auth.reason === "unauthorized") {
+      console.log(s.dim("    API key may be invalid. Get a new one at https://app.honcho.dev"));
     }
     process.exit(1);
   }
+  console.log(`  ${s.label("Auth")}:        ${s.success("ok")} ${s.dim(`(${auth.durationMs}ms)`)}`);
+  console.log(`  ${s.label("Workspace")}:   ${config.workspace}`);
+  console.log(`  ${s.label("Peers")}:       ${config.peerName} / ${config.aiPeer}`);
 
-  // Write config if it doesn't exist
-  if (!configExists()) {
-    console.log(s.section("Creating config"));
-    try {
-      // Root-level globals (owned by user/CLI, written only at initial setup)
-      const { saveRootField } = await import("../config.js");
+  // Warm fuzzies: gather queue + conclusions in parallel post-auth so the
+  // user sees concrete proof that memory is wired up end-to-end.
+  const summary = await gatherSummary(config);
+  if (summary.ok) {
+    if (summary.conclusionsCount !== undefined) {
+      const memoryDetail = summary.conclusionsCount > 0
+        ? `${summary.conclusionsCount} conclusions stored`
+        : `empty -- will build as you chat`;
+      console.log(`  ${s.label("Memory")}:      ${s.success(memoryDetail)}`);
+    }
+    if (summary.queue) {
+      const q = summary.queue;
+      const queueDetail = q.total > 0
+        ? `${q.completed}/${q.total} observed${q.inProgress > 0 ? `, ${q.inProgress} active` : ""}`
+        : "idle";
+      console.log(`  ${s.label("Deriver")}:     ${s.success(queueDetail)}`);
+    }
+  }
+  console.log("");
+
+  // Persist config. Root-level globals (apiKey, peerName) are owned by the
+  // user/CLI and only written on first install — so a pre-written self-hosted
+  // config (e.g. from the setup skill) keeps its root scope. saveConfig is
+  // idempotent: it merges with existing values and only writes host overrides
+  // when they differ from root, so calling it on every run is safe.
+  const isFirstInstall = !configExists();
+  console.log(s.section(isFirstInstall ? "Creating config" : "Updating config"));
+  try {
+    if (isFirstInstall) {
       saveRootField("apiKey", config.apiKey);
       saveRootField("peerName", config.peerName);
-      // Per-host config goes in hosts.claude_code via saveConfig
-      saveConfig({
-        apiKey: config.apiKey,
-        peerName: config.peerName,
-        workspace: config.workspace,
-        aiPeer: config.aiPeer,
-        saveMessages: true,
-        enabled: true,
-        logging: true,
-      });
-      console.log(s.success(`Written to ${getConfigPath()}`));
-    } catch (err) {
-      console.log(s.warn(`Failed to write config: ${err instanceof Error ? err.message : String(err)}`));
-      process.exit(1);
     }
-    console.log("");
-  } else {
-    console.log(s.dim(`Config already exists at ${getConfigPath()}`));
-    console.log("");
+    saveConfig({
+      apiKey: config.apiKey,
+      peerName: config.peerName,
+      workspace: config.workspace,
+      aiPeer: config.aiPeer,
+      endpoint: config.endpoint,
+      saveMessages: true,
+      enabled: true,
+      logging: true,
+    });
+    console.log(s.success(`Written to ${getConfigPath()}`));
+  } catch (err) {
+    console.log(s.warn(`Failed to write config: ${err instanceof Error ? err.message : String(err)}`));
+    process.exit(1);
   }
+  console.log("");
 
   console.log(s.success("Setup complete -- Honcho memory is ready"));
   console.log("");

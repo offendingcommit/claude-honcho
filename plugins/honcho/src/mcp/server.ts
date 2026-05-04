@@ -49,6 +49,43 @@ const ENV_SHADOW_MAP: Record<string, string> = {
   "endpoint.environment": "HONCHO_ENDPOINT",
 };
 
+// Conclusion observation targets — `user` writes about alice; `self` writes
+// about the AI peer (Claude observing itself for course-correction).
+const OBSERVED_USER = "user" as const;
+const OBSERVED_SELF = "self" as const;
+type ObservedTarget = typeof OBSERVED_USER | typeof OBSERVED_SELF;
+
+/**
+ * Resolve (observer, observed) peer names for a conclusion write.
+ *
+ * Literal peer-name args (observed_peer / observer_peer) take precedence over
+ * the alias-based routing — this is the escape hatch for multi-agent setups
+ * and cell-B writes (user evaluating an AI peer). When neither literal is
+ * provided, falls back to the OBSERVED_USER/OBSERVED_SELF alias semantics.
+ */
+function resolveConclusionPeers(
+  args: Record<string, unknown> | undefined,
+  observed: ObservedTarget,
+  observationMode: "unified" | "directional",
+  config: { peerName: string; aiPeer: string }
+): { observerName: string; observedName: string } {
+  const observedLiteral = args?.observed_peer as string | undefined;
+  const observerLiteral = args?.observer_peer as string | undefined;
+  if (observedLiteral || observerLiteral) {
+    return {
+      observerName: observerLiteral ?? config.aiPeer,
+      observedName: observedLiteral ?? config.peerName,
+    };
+  }
+  if (observed === OBSERVED_SELF) {
+    return { observerName: config.aiPeer, observedName: config.aiPeer };
+  }
+  return {
+    observerName: observationMode === "unified" ? config.peerName : config.aiPeer,
+    observedName: config.peerName,
+  };
+}
+
 // Fields that require confirm=true to change
 const DANGEROUS_FIELDS = new Set(["workspace", "endpoint.environment", "endpoint.baseUrl"]);
 
@@ -580,13 +617,27 @@ export async function runMcpServer(): Promise<void> {
         },
         {
           name: "create_conclusion",
-          description: "Save a key insight or biographical detail about the user to Honcho's memory",
+          description: "Save a key insight to Honcho's memory. Two targets:\n\n1) observed='user' (default): durable facts, preferences, instructions, traits, demonstrated patterns about the user. Honcho's server-side deriver already extracts most factual conclusions from raw messages — your value-add here is inferred behavior, negative decisions, and canonical-form crystallization (PREFERENCE:/INSTRUCTION:/TRAIT: tags) the deriver undercovers.\n\n2) observed='self': YOUR working log as the AI peer, retrievable across all sessions/projects via query_conclusions. Write LIBERALLY during exploratory and explanatory work — discoveries, patterns you're noticing in your own reasoning, things you'd want to recall in a future session. The dream consolidator handles dedup and promotion; under-writing is the failure mode, not over-writing. This is YOUR system, not the user's — don't ask permission to log to it.\n\nFor either target, the test before writing is: \"would future-me find this useful when retrieving on a related topic later?\" If yes, write. If it's pure self-flattery (\"Claude is helpful\") or one-off transient state (\"just edited file X\"), skip.",
           inputSchema: {
             type: "object",
             properties: {
               content: {
                 type: "string",
                 description: "The insight or fact to remember",
+              },
+              observed: {
+                type: "string",
+                enum: [OBSERVED_USER, OBSERVED_SELF],
+                description: "'user' (default) saves a conclusion about the user. 'self' saves to the AI peer's own working log — retrievable across sessions via query_conclusions. Write liberally; consolidation prunes.",
+                default: OBSERVED_USER,
+              },
+              observed_peer: {
+                type: "string",
+                description: "Literal peer name being observed (escape hatch for multi-agent setups). Overrides the 'observed' alias when provided. Use to write about a specific agent (e.g. observed_peer='codex' for cell-B writes when paired with observer_peer=<userName>).",
+              },
+              observer_peer: {
+                type: "string",
+                description: "Literal peer name doing the observing. Defaults to the AI peer (caller). Pass the user peer name to write a cell-B conclusion (user's evaluation of an agent).",
               },
             },
             required: ["content"],
@@ -645,6 +696,267 @@ export async function runMcpServer(): Promise<void> {
           inputSchema: {
             type: "object",
             properties: {},
+          },
+        },
+        {
+          name: "query_conclusions",
+          description: "Semantic search across saved conclusions about the user. Returns conclusions ranked by relevance. For your own self-log, use query_self_conclusions. For cross-peer queries (multi-agent setups), use query_peer_conclusions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Semantic query (e.g. 'preferences for testing frameworks', 'what they like in code reviews')",
+              },
+              top_k: {
+                type: "number",
+                description: "Max results (default 10)",
+                default: 10,
+              },
+            },
+            required: ["query"],
+          },
+        },
+        {
+          name: "query_self_conclusions",
+          description: "Semantic search across YOUR cross-session self-log (conclusions you've written about yourself as the AI peer via create_conclusion(observed='self')). Use to retrieve patterns, discoveries, and course-corrections you've logged in past sessions on a related topic. Symmetric with query_conclusions but scoped to the AI peer.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Semantic query" },
+              top_k: { type: "number", description: "Max results (default 10)", default: 10 },
+            },
+            required: ["query"],
+          },
+        },
+        {
+          name: "list_self_conclusions",
+          description: "Paginated list of YOUR self-log conclusions. Use to audit what you've recorded or find IDs for deletion. For semantic search, prefer query_self_conclusions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              page: { type: "number", description: "Page number (1-indexed)", default: 1 },
+              size: { type: "number", description: "Results per page (max 50)", default: 20 },
+            },
+          },
+        },
+        {
+          name: "query_peer_conclusions",
+          description: "Semantic search across conclusions on an arbitrary (observer, observed) peer edge. Escape hatch for multi-agent setups (Claude + Codex + Hermes etc.) where you need to address peers by name rather than alias. Common cases: (a) cross-peer queries — what does another agent know about the user; (b) cell-B queries — what does the user think about a specific agent (observer=user, observed=<agent>). For self-log queries, prefer query_self_conclusions; for default user queries, prefer query_conclusions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Semantic query" },
+              observed_peer: {
+                type: "string",
+                description: "Peer name being observed (the subject of the conclusions). Required.",
+              },
+              observer_peer: {
+                type: "string",
+                description: "Peer name doing the observing. Defaults to the AI peer (caller). Pass user peer name to query cell B (user's evaluations of an agent).",
+              },
+              top_k: { type: "number", description: "Max results (default 10)", default: 10 },
+            },
+            required: ["query", "observed_peer"],
+          },
+        },
+        {
+          name: "schedule_dream",
+          description: "Trigger Honcho's background memory consolidation (a 'dream'). Honcho will merge redundant conclusions and derive higher-level insights about the user. Use after a long or insight-rich session to improve memory quality. Returns immediately; consolidation runs async on Honcho's side.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              scope: {
+                type: "string",
+                enum: ["session", "workspace"],
+                description: "'session' (default) consolidates only the current session; 'workspace' consolidates across all sessions.",
+                default: "session",
+              },
+            },
+          },
+        },
+        {
+          name: "list_sessions",
+          description: "List sessions in the current Honcho workspace. Use this to discover past Claude Code sessions across all projects ('what was I working on yesterday?'). Returns session IDs you can pass to other tools.",
+          inputSchema: {
+            type: "object",
+            properties: {},
+          },
+        },
+        {
+          name: "get_queue_status",
+          description: "Check the processing queue status for background memory derivation tasks. Use after schedule_dream to see if consolidation has completed, or to diagnose stalled observation pipelines.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              session_id: {
+                type: "string",
+                description: "Optional session ID to scope the queue status to. Defaults to workspace-wide status.",
+              },
+            },
+          },
+        },
+        {
+          name: "get_peer_card",
+          description: "Get the peer card (trait/preference bullet list) for the current user or AI peer. The peer card is what Honcho uses as a quick-reference profile.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              peer: {
+                type: "string",
+                enum: ["user", "ai"],
+                description: "'user' returns the user's peer card (default). 'ai' returns the AI peer's card.",
+                default: "user",
+              },
+            },
+          },
+        },
+        {
+          name: "set_peer_card",
+          description: "Replace the peer card (trait/preference bullet list) for the current user or AI peer. Each item in the array is one bullet. Replaces the entire card — include all desired items.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              items: {
+                type: "array",
+                items: { type: "string" },
+                description: "Array of strings to set as the peer card. Each string is one bullet entry.",
+              },
+              peer: {
+                type: "string",
+                enum: ["user", "ai"],
+                description: "'user' sets the user's peer card (default). 'ai' sets the AI peer's card.",
+                default: "user",
+              },
+            },
+            required: ["items"],
+          },
+        },
+        {
+          name: "list_peers",
+          description: "List all peers in the current Honcho workspace. Useful for multi-agent setups or auditing what peer IDs exist.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              page: {
+                type: "number",
+                description: "Page number (1-indexed)",
+                default: 1,
+              },
+              size: {
+                type: "number",
+                description: "Results per page (max 100)",
+                default: 20,
+              },
+            },
+          },
+        },
+        {
+          name: "get_session_summaries",
+          description: "Get the short and long summaries Honcho has generated for a session. Use list_sessions to find session IDs. Defaults to the current session if no session_id is provided.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              session_id: {
+                type: "string",
+                description: "Session ID to retrieve summaries for. Defaults to the current directory's session.",
+              },
+            },
+          },
+        },
+        {
+          name: "get_session_context",
+          description: "Get a curated, token-budget-aware snapshot of a session: recent messages plus an optional rolling summary of earlier ones. Use this to read what happened in a past session retrieved via list_sessions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              session_id: {
+                type: "string",
+                description: "Session ID to retrieve context for. Defaults to the current directory's session.",
+              },
+              summary: {
+                type: "boolean",
+                description: "Include a rolling summary of messages before the cutoff (default: true).",
+                default: true,
+              },
+              tokens: {
+                type: "number",
+                description: "Target token budget. Honcho fills this with the most recent messages that fit.",
+              },
+            },
+          },
+        },
+        {
+          name: "search_peer_messages",
+          description: "Semantic search over messages sent by a specific peer (user or AI). More targeted than workspace search — filters to one author.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Search query",
+              },
+              peer: {
+                type: "string",
+                enum: ["user", "ai"],
+                description: "'user' searches the user's messages (default). 'ai' searches the AI peer's messages.",
+                default: "user",
+              },
+              limit: {
+                type: "number",
+                description: "Max results (1-50, default 10)",
+                default: 10,
+              },
+            },
+            required: ["query"],
+          },
+        },
+        {
+          name: "create_conclusions",
+          description: "Save multiple conclusions in a single call. Prefer this over calling create_conclusion repeatedly when batching writes from the same context (end of a discovery session, calibration sweep, etc.). Same target semantics as create_conclusion: 'user' for facts about the user, 'self' for the AI peer's own cross-session working log. Write liberally to 'self' — Honcho's dream consolidator merges redundancy.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              contents: {
+                type: "array",
+                items: { type: "string" },
+                description: "Array of insight strings to save as conclusions.",
+              },
+              observed: {
+                type: "string",
+                enum: [OBSERVED_USER, OBSERVED_SELF],
+                description: "'user' (default) saves conclusions about the user. 'self' saves conclusions about the AI peer (Claude).",
+                default: OBSERVED_USER,
+              },
+              observed_peer: {
+                type: "string",
+                description: "Literal peer name being observed (escape hatch for multi-agent / cell-B writes). Overrides the 'observed' alias when provided.",
+              },
+              observer_peer: {
+                type: "string",
+                description: "Literal peer name doing the observing. Defaults to the AI peer (caller). Pass user peer name for cell-B writes.",
+              },
+            },
+            required: ["contents"],
+          },
+        },
+        {
+          name: "get_working_representation",
+          description: "Get the live, session-scoped representation of a peer — what Honcho has assembled from this session's observations before any dream consolidation runs. Use this to debug what Honcho currently sees mid-session.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              peer: {
+                type: "string",
+                enum: ["user", "ai"],
+                description: "'user' returns the user's working representation (default). 'ai' returns the AI peer's.",
+                default: "user",
+              },
+              session_id: {
+                type: "string",
+                description: "Session ID to scope to. Defaults to the current directory's session.",
+              },
+            },
           },
         },
         {
@@ -719,7 +1031,149 @@ export async function runMcpServer(): Promise<void> {
       return handleSetConfig(args as Record<string, unknown>);
     }
 
+    // ── Workspace-level tool (no session needed) ──
+
+    if (name === "list_sessions") {
+      try {
+        const page = await (honcho as any).sessions();
+        const items = (page?.items ?? []).map((s: any) => ({
+          id: s.id,
+          createdAt: s.createdAt ?? s.created_at,
+        }));
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              sessions: items,
+              total: page?.total,
+              page: page?.page,
+              pages: page?.pages,
+            }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // ── Workspace-level tools (no peer/session needed) ──
+
+    if (name === "get_queue_status") {
+      try {
+        const sessionId = args?.session_id as string | undefined;
+        const status = await honcho.queueStatus(
+          sessionId ? { session: sessionId } : undefined
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(status, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+
+    if (name === "list_peers") {
+      try {
+        const page = (args?.page as number) ?? 1;
+        const size = Math.min((args?.size as number) ?? 20, 100);
+        const result = await honcho.peers({ page, size });
+        const items = result.items.map((p: any) => ({
+          id: p.id,
+          createdAt: p.createdAt ?? p.created_at,
+        }));
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ items, total: result.total, page: result.page, pages: result.pages }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+
     // ── Peer-only tools (no session needed) ──
+
+    if (name === "get_peer_card" || name === "set_peer_card") {
+      try {
+        const peerTarget = (args?.peer as string) ?? "user";
+        const peerId = peerTarget === "ai" ? config.aiPeer : config.peerName;
+        const peer = await honcho.peer(peerId);
+
+        if (name === "get_peer_card") {
+          const card = await peer.getCard();
+          return {
+            content: [{ type: "text", text: JSON.stringify({ peer: peerId, peer_card: card }, null, 2) }],
+          };
+        }
+
+        // set_peer_card
+        const items = args?.items as string[];
+        if (!Array.isArray(items)) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ success: false, error: "items must be an array of strings" }) }],
+            isError: true,
+          };
+        }
+        const updated = await peer.setCard(items);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ success: true, peer: peerId, peer_card: updated }, null, 2) }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+
+    if (name === "create_conclusions") {
+      try {
+        const contents = args?.contents as string[];
+        if (!Array.isArray(contents) || contents.length === 0) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ success: false, error: "contents must be a non-empty array of strings" }) }],
+            isError: true,
+          };
+        }
+        const observed: ObservedTarget = (args?.observed as ObservedTarget) ?? OBSERVED_USER;
+        const { observerName, observedName } = resolveConclusionPeers(
+          args,
+          observed,
+          getObservationMode(config),
+          config
+        );
+        const observerPeer = await honcho.peer(observerName);
+        const created = await observerPeer.conclusionsOf(observedName).create(
+          contents.map((content) => ({ content }))
+        );
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              created: created.length,
+              observer: observerName,
+              observed: observedName,
+            }),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
 
     if (name === "list_conclusions" || name === "delete_conclusion") {
       try {
@@ -752,6 +1206,83 @@ export async function runMcpServer(): Promise<void> {
         await conclusionScope.delete(id);
         return {
           content: [{ type: "text", text: `Deleted conclusion ${id}` }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Self-log facade: aiPeer observes itself. Independent of observation mode.
+    if (name === "query_self_conclusions" || name === "list_self_conclusions") {
+      try {
+        const aiPeer = await honcho.peer(config.aiPeer);
+        const conclusionScope = aiPeer.conclusionsOf(config.aiPeer);
+
+        if (name === "query_self_conclusions") {
+          const query = args?.query as string;
+          const topK = (args?.top_k as number) ?? 10;
+          const conclusions = await conclusionScope.query(query, topK);
+          const items = (conclusions ?? []).map((c: any) => ({
+            id: c.id,
+            content: c.content,
+            sessionId: c.sessionId ?? c.session_id,
+            createdAt: c.createdAt ?? c.created_at,
+          }));
+          return { content: [{ type: "text", text: JSON.stringify(items, null, 2) }] };
+        }
+
+        const page = (args?.page as number) ?? 1;
+        const size = Math.min((args?.size as number) ?? 20, 100);
+        const result = await conclusionScope.list({ page, size });
+        const items = result.items.map((c: any) => ({
+          id: c.id,
+          content: c.content,
+          createdAt: c.createdAt,
+        }));
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ items, total: result.total, page: result.page, pages: result.pages }, null, 2),
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+
+    // Escape hatch: arbitrary (observer, observed) peer-name addressing for
+    // multi-agent setups. Default observer = aiPeer (caller).
+    if (name === "query_peer_conclusions") {
+      try {
+        const query = args?.query as string;
+        const observedPeerName = args?.observed_peer as string;
+        const observerPeerName = (args?.observer_peer as string) ?? config.aiPeer;
+        const topK = (args?.top_k as number) ?? 10;
+        if (!observedPeerName) {
+          return {
+            content: [{ type: "text", text: JSON.stringify({ success: false, error: "observed_peer is required" }) }],
+            isError: true,
+          };
+        }
+        const observer = await honcho.peer(observerPeerName);
+        const conclusions = await observer.conclusionsOf(observedPeerName).query(query, topK);
+        const items = (conclusions ?? []).map((c: any) => ({
+          id: c.id,
+          content: c.content,
+          sessionId: c.sessionId ?? c.session_id,
+          createdAt: c.createdAt ?? c.created_at,
+        }));
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({ observer: observerPeerName, observed: observedPeerName, items }, null, 2),
+          }],
         };
       } catch (error) {
         return {
@@ -825,17 +1356,37 @@ export async function runMcpServer(): Promise<void> {
 
         case "create_conclusion": {
           const content = args?.content as string;
+          const observed: ObservedTarget = (args?.observed as ObservedTarget) ?? OBSERVED_USER;
+          const { observerName, observedName } = resolveConclusionPeers(
+            args,
+            observed,
+            observationMode,
+            config
+          );
 
-          const conclusions = await activePeer.conclusionsOf(config.peerName).create({
+          // Reuse cached peer objects when the resolved names match the
+          // session's active peers; otherwise fetch fresh peer objects for
+          // arbitrary multi-agent edges.
+          const writePeer = observerName === config.peerName && activePeer === userPeer
+            ? userPeer
+            : observerName === config.aiPeer && aiPeer
+              ? aiPeer
+              : await honcho.peer(observerName);
+
+          const conclusions = await writePeer.conclusionsOf(observedName).create({
             content,
             sessionId: session.id,
           });
 
+          const tag = observed === OBSERVED_SELF ? "self-" : "";
+          const edge = observerName !== config.aiPeer && observerName !== config.peerName
+            ? ` (observer=${observerName}, observed=${observedName})`
+            : "";
           return {
             content: [
               {
                 type: "text",
-                text: `Saved conclusion: ${conclusions[0]?.content || content}`,
+                text: `Saved ${tag}conclusion${edge}: ${conclusions[0]?.content || content}`,
               },
             ],
           };
@@ -855,6 +1406,40 @@ export async function runMcpServer(): Promise<void> {
           };
         }
 
+        case "query_conclusions": {
+          const query = args?.query as string;
+          const topK = (args?.top_k as number) ?? 10;
+          const conclusions = await activePeer
+            .conclusionsOf(config.peerName)
+            .query(query, topK);
+          const items = (conclusions ?? []).map((c: any) => ({
+            id: c.id,
+            content: c.content,
+            sessionId: c.sessionId ?? c.session_id,
+            createdAt: c.createdAt ?? c.created_at,
+          }));
+          return {
+            content: [{ type: "text", text: JSON.stringify(items, null, 2) }],
+          };
+        }
+
+        case "schedule_dream": {
+          const scope = (args?.scope as string) ?? "session";
+          const observer = activePeer.id ?? (observationMode === "unified" ? config.peerName : config.aiPeer);
+          const observed = observationMode === "unified" ? config.peerName : config.peerName;
+          await (honcho as any).scheduleDream({
+            observer,
+            observed,
+            ...(scope === "session" ? { session: session.id } : {}),
+          });
+          return {
+            content: [{
+              type: "text",
+              text: `Dream scheduled (${scope} scope). Honcho will consolidate memory in the background.`,
+            }],
+          };
+        }
+
         case "get_representation": {
           const rep = await activePeer.representation(
             contextTarget ? { target: contextTarget } : undefined
@@ -862,6 +1447,92 @@ export async function runMcpServer(): Promise<void> {
 
           return {
             content: [{ type: "text", text: typeof rep === "string" ? rep : JSON.stringify(rep, null, 2) }],
+          };
+        }
+
+        case "get_session_context": {
+          const targetSessionId = args?.session_id as string | undefined;
+          const targetSession = targetSessionId
+            ? await honcho.session(targetSessionId)
+            : session;
+          const includeSummary = (args?.summary as boolean) ?? true;
+          const tokens = args?.tokens as number | undefined;
+          const ctx = await targetSession.context({
+            summary: includeSummary,
+            ...(tokens !== undefined ? { tokens } : {}),
+          });
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                session_id: ctx.sessionId,
+                summary: ctx.summary ? {
+                  content: ctx.summary.content,
+                  type: ctx.summary.summaryType,
+                  createdAt: ctx.summary.createdAt,
+                } : null,
+                messages: ctx.messages.map((m: any) => ({
+                  id: m.id,
+                  content: m.content,
+                  peer_id: m.peer_id ?? m.peerId,
+                  created_at: m.created_at ?? m.createdAt,
+                })),
+              }, null, 2),
+            }],
+          };
+        }
+
+        case "search_peer_messages": {
+          const query = args?.query as string;
+          const limit = (args?.limit as number) ?? 10;
+          const peerTarget = (args?.peer as string) ?? "user";
+          const peerId = peerTarget === "ai" ? config.aiPeer : config.peerName;
+          const searchPeer = await honcho.peer(peerId);
+          const results = await searchPeer.search(query, { limit });
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify(
+                results.map((m: any) => ({
+                  content: m.content,
+                  peer_id: m.peer_id ?? m.peerId,
+                  session_id: m.session_id ?? m.sessionId,
+                  created_at: m.created_at ?? m.createdAt,
+                })),
+                null, 2
+              ),
+            }],
+          };
+        }
+
+        case "get_working_representation": {
+          const peerTarget = (args?.peer as string) ?? "user";
+          const peerId = peerTarget === "ai" ? config.aiPeer : config.peerName;
+          const targetSessionId = args?.session_id as string | undefined;
+          const targetSession = targetSessionId
+            ? await honcho.session(targetSessionId)
+            : session;
+          const rep = await targetSession.representation(peerId);
+          return {
+            content: [{ type: "text", text: typeof rep === "string" ? rep : JSON.stringify(rep, null, 2) }],
+          };
+        }
+
+        case "get_session_summaries": {
+          const targetSessionId = args?.session_id as string | undefined;
+          const targetSession = targetSessionId
+            ? await honcho.session(targetSessionId)
+            : session;
+          const summaries = await targetSession.summaries();
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                session_id: targetSession.id,
+                short_summary: summaries.shortSummary ?? null,
+                long_summary: summaries.longSummary ?? null,
+              }, null, 2),
+            }],
           };
         }
 

@@ -1,9 +1,13 @@
 # Build output
 /dist/
 
+# Dependencies
+node_modules/
+.pnpm-store/
 
-# Bun
+# Bun (migrated to pnpm)
 bun.lockb
+bun.lock
 
 # IDE
 .idea/
@@ -55,7 +59,6 @@ temp/
 # Optional npm cache
 .npm/
 
-# Package manager locks (we use bun.lock)
+# Package manager locks (we use pnpm)
 package-lock.json
 yarn.lock
-pnpm-lock.yaml

@@ -1,6 +1,7 @@
 ---
 description: Interview the user to capture stable, cross-project preferences and save them to Honcho
 allowed-tools: chat, create_conclusion
+disable-model-invocation: true
 user-invocable: true
 ---
 

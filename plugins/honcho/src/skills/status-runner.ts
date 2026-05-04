@@ -1,11 +1,15 @@
 #!/usr/bin/env bun
 /**
  * Runner script for the status skill.
- * Minimal: connection, queue, conclusions.
+ * Wraps server + auth checks, then layers on workspace / queue / conclusions.
  */
-import { Honcho, type Page, type Conclusion } from "@honcho-ai/sdk";
-import type { QueueStatus } from "@honcho-ai/sdk";
-import { loadConfig, getHonchoClientOptions, getEndpointInfo, getSessionName } from "../config.js";
+import { loadConfig, getEndpointInfo, getSessionName } from "../config.js";
+import {
+  checkHonchoServer,
+  checkHonchoAuth,
+  gatherSummary,
+  getServerProbeUrl,
+} from "../health.js";
 import * as s from "../styles.js";
 
 async function status(): Promise<void> {
@@ -21,61 +25,59 @@ async function status(): Promise<void> {
   }
 
   const endpointInfo = getEndpointInfo(config);
+  console.log(`  ${s.label("Endpoint")}:    ${endpointInfo.url} ${s.dim(`(${endpointInfo.type})`)}`);
 
-  try {
-    const honcho = new Honcho(getHonchoClientOptions(config));
-    const pingStart = Date.now();
+  // Server reachability
+  const server = await checkHonchoServer(config);
+  if (server.ok) {
+    const versionTag = server.serverVersion ? `Honcho ${server.serverVersion}` : "ok";
+    console.log(`  ${s.label("Server")}:      ${s.success(versionTag)} ${s.dim(`(${server.durationMs}ms)`)}`);
+  } else {
+    const detail = server.httpStatus ? `HTTP ${server.httpStatus}` : server.error ?? "unknown";
+    console.log(`  ${s.label("Server")}:      ${s.error("unreachable")} ${s.dim(`(${detail} @ ${getServerProbeUrl(config)})`)}`);
+  }
 
-    const [queueResult, conclusionsResult] = await Promise.allSettled([
-      honcho.queueStatus(),
-      honcho.peer(config.peerName).then((peer) => peer.conclusions.list()),
-    ]);
+  // Auth -- gates the rest of the report.
+  const auth = await checkHonchoAuth(config);
+  if (auth.ok) {
+    console.log(`  ${s.label("Auth")}:        ${s.success("ok")} ${s.dim(`(${auth.durationMs}ms)`)}`);
+  } else {
+    const label = auth.reason === "no-key"
+      ? "missing API key"
+      : auth.reason === "unauthorized"
+      ? "unauthorized"
+      : auth.reason === "network"
+      ? "network failure"
+      : "failed";
+    console.log(`  ${s.label("Auth")}:        ${s.error(label)}${auth.message ? ` ${s.dim(auth.message.slice(0, 60))}` : ""}`);
+    console.log("");
+    return;
+  }
 
-    const latency = Date.now() - pingStart;
+  console.log(`  ${s.label("Workspace")}:   ${config.workspace}`);
+  console.log(`  ${s.label("Session")}:     ${getSessionName(process.cwd())}`);
+  console.log(`  ${s.label("Peers")}:       ${config.peerName} / ${config.aiPeer}`);
 
-    // If both API calls failed, treat as a connection failure
-    if (queueResult.status === "rejected" && conclusionsResult.status === "rejected") {
-      throw queueResult.reason;
-    }
-
-    console.log(`  ${s.label("Connection")}:  ${s.success("connected")} ${s.dim(`(${latency}ms)`)}`);
-    console.log(`  ${s.label("Workspace")}:   ${config.workspace} ${s.dim(`@ ${endpointInfo.url}`)}`);
-    console.log(`  ${s.label("Session")}:     ${getSessionName(process.cwd())}`);
-    console.log(`  ${s.label("Peers")}:       ${config.peerName} / ${config.aiPeer}`);
-
-    // Observation queue — messages being processed into conclusions
-    if (queueResult.status === "fulfilled") {
-      const q: QueueStatus = queueResult.value;
-      const total = q.totalWorkUnits ?? 0;
-      const completed = q.completedWorkUnits ?? 0;
-      const inProgress = q.inProgressWorkUnits ?? 0;
-      const sessionCount = q.sessions ? Object.keys(q.sessions).length : 0;
-      if (total > 0) {
-        const pct = Math.round((completed / total) * 100);
-        let detail = `${completed}/${total} messages observed (${pct}%)`;
-        if (inProgress > 0) detail += `, ${inProgress} active`;
-        if (sessionCount > 0) detail += ` across ${sessionCount} sessions`;
+  const summary = await gatherSummary(config);
+  if (summary.ok) {
+    if (summary.queue) {
+      const q = summary.queue;
+      if (q.total > 0) {
+        const pct = Math.round((q.completed / q.total) * 100);
+        let detail = `${q.completed}/${q.total} messages observed (${pct}%)`;
+        if (q.inProgress > 0) detail += `, ${q.inProgress} active`;
+        if (q.sessions > 0) detail += ` across ${q.sessions} sessions`;
         console.log(`  ${s.label("Observing")}:   ${detail}`);
       } else {
         console.log(`  ${s.label("Observing")}:   ${s.dim("idle")}`);
       }
     }
 
-    // Conclusions
-    if (conclusionsResult.status === "fulfilled") {
-      const page: Page<Conclusion> = conclusionsResult.value;
-      const total = page.total ?? page.items?.length ?? "?";
-      console.log(`  ${s.label("Conclusions")}: ${total} ${s.dim(`(${config.peerName})`)}`);
+    if (summary.conclusionsCount !== undefined) {
+      console.log(`  ${s.label("Conclusions")}: ${summary.conclusionsCount} ${s.dim(`(${config.peerName})`)}`);
     }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes("401") || message.includes("Unauthorized")) {
-      console.log(`  ${s.label("Connection")}:  ${s.error("auth failed")} ${s.dim("check API key")}`);
-    } else if (message.includes("ECONNREFUSED") || message.includes("fetch failed")) {
-      console.log(`  ${s.label("Connection")}:  ${s.error("unreachable")} ${s.dim(endpointInfo.url)}`);
-    } else {
-      console.log(`  ${s.label("Connection")}:  ${s.error("failed")} ${s.dim(message.slice(0, 60))}`);
-    }
+  } else if (summary.error) {
+    console.log(`  ${s.label("Detail")}:      ${s.dim(summary.error.slice(0, 60))}`);
   }
 
   console.log("");

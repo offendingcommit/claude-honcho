@@ -1,5 +1,6 @@
 ---
 description: Show current Honcho memory status and configuration
+when_to_use: Use when the user asks "is honcho working?", "how many conclusions do I have?", "check my memory system", "is my memory connected?", or wants to verify the plugin is active.
 user-invocable: true
 ---
 
@@ -9,11 +10,14 @@ Display the current Honcho memory system status: connection health, workspace, p
 
 ## What It Shows
 
-1. **Connection** - Live connection health and latency
-2. **Workspace** - Current workspace and endpoint URL
-3. **Peers** - User peer and AI peer names
-4. **Observing** - Queue processing status (messages observed, active, sessions)
-5. **Conclusions** - Total conclusion/memory count for the user peer
+1. **Endpoint** - Resolved Honcho URL and type (production / local / custom)
+2. **Server** - Unauthenticated `/openapi.json` probe; reports running Honcho version
+3. **Auth** - Authenticated SDK call (API key valid against the workspace)
+4. **Workspace / Session / Peers** - Current names for this directory
+5. **Observing** - Queue processing status (messages observed, active, sessions)
+6. **Conclusions** - Total conclusion/memory count for the user peer
+
+If `Auth` fails, the status report stops there — no point asking the SDK for queue/conclusions when the key is rejected. For pure connectivity debugging without the rest of the report, use `/honcho:health`.
 
 ## Usage
 
@@ -26,5 +30,5 @@ After running the script, present a concise status card echoing the runner outpu
 ## Implementation
 
 ```bash
-bun run ${CLAUDE_PLUGIN_ROOT}/src/skills/status-runner.ts
+bun run ${CLAUDE_PLUGIN_ROOT}/dist/src/skills/status-runner.js
 ```

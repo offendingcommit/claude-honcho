@@ -36,7 +36,7 @@ interface TranscriptEntry {
 /**
  * Check if assistant content is meaningful prose vs just tool acknowledgment
  */
-function isMeaningfulAssistantContent(content: string): boolean {
+export function isMeaningfulAssistantContent(content: string): boolean {
   if (content.length < 50) return false;
 
   const toolAnnouncements = [
@@ -69,7 +69,7 @@ function isMeaningfulAssistantContent(content: string): boolean {
   return content.length >= 200;
 }
 
-function parseTranscript(transcriptPath: string): Array<{ role: string; content: string; isMeaningful?: boolean; timestamp?: string }> {
+export function parseTranscript(transcriptPath: string): Array<{ role: string; content: string; isMeaningful?: boolean; timestamp?: string }> {
   const messages: Array<{ role: string; content: string; isMeaningful?: boolean; timestamp?: string }> = [];
 
   if (!transcriptPath || !existsSync(transcriptPath)) {
@@ -142,7 +142,7 @@ function parseTranscript(transcriptPath: string): Array<{ role: string; content:
   return messages;
 }
 
-function extractWorkItems(assistantMessages: string[]): string[] {
+export function extractWorkItems(assistantMessages: string[]): string[] {
   const workItems: string[] = [];
   const actionPatterns = [
     /(?:created|wrote|added)\s+(?:file\s+)?([^\n.]+)/gi,

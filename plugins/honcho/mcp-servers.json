@@ -1,6 +1,6 @@
 {
   "honcho": {
     "command": "bun",
-    "args": ["run", "${CLAUDE_PLUGIN_ROOT}/mcp-server.ts"]
+    "args": ["run", "${CLAUDE_PLUGIN_ROOT}/dist/mcp-server.js"]
   }
 }
